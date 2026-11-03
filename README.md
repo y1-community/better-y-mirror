@@ -1,2 +1,915 @@
-# better-y-mirror
-Portable flashing packages for Leska1337/better-Y (Y1)
+<div align="center">
+
+![Logo](./screenshots/plus_logo.png)
+
+# better-Y
+
+A mod of the stock launcher for the **innioasis Y1**, based on 3.1.2 firmware
+
+</div>
+
+## What it adds
+>[!NOTE]
+>There's a "better-Y" tab inside the Options menu — adjust the settings marked with ⚙️ to suit your needs. <br>
+>Within this tab press and hold the top button on the desired option to display its description and how it works.
+
+### Metadata
+
+<details>
+<summary>⚙️ <b>Track numbers from metadata</b> — inside albums</summary>
+<div>
+<p></p>
+
+It applies whatever the sort is: if sorted by file name - the numbers won't be in order.
+
+If no track numbers are specified for the songs on the album, the stock numbers are used instead.
+
+If track numbers are specified for only some of the songs, the songs without numbers will be moved to the bottom, and a "#" will appear in place of their track numbers.
+
+</div>
+</details>
+
+<details>
+<summary>⚙️ <b>Split artists that are divided by commas and semicolons</b></summary>
+<div>
+<p></p>
+
+    System of a Down, RZA
+    System of a Down; RZA
+
+becomes two different artists, "System of a Down" and "RZA".
+
+To keep an artist whose name contains a comma, use a semicolon — it takes priority:
+
+    Tyler, The Creator; Frank Ocean
+
+becomes two different artists, "Tyler, The Creator" and "Frank Ocean".
+
+The same can be done with commas alone by adding the artist to `/better-Y/comma_artists.txt` on the SD card:
+
+    Tyler, The Creator, Frank Ocean
+
+becomes two different artists, "Tyler, The Creator" and "Frank Ocean".
+
+</div>
+</details>
+
+<details>
+<summary>⚙️ <b>Split genres that are divided by commas, semicolons and slashes</b></summary>
+<div>
+<p></p>
+
+    Indie Rock, Acoustic
+    Indie Rock; Acoustic
+    Indie Rock / Acoustic
+    Indie Rock/Acoustic
+
+becomes two different genres, "Indie Rock" and "Acoustic".
+
+</div>
+</details>
+
+<p>&#9679;&ensp;⚙️ <b>Song titles from metadata</b> — instead of file names</p>
+
+<details>
+<summary><b>Album artist metadata tag support</b></summary>
+<div>
+<p></p>
+
+Shown under the album names. If empty — the Artist tag is used instead.
+
+</div>
+</details>
+
+<details>
+<summary><b>External covers support</b> — <code>cover.*</code> and <code>folder.*</code></summary>
+<div>
+<p></p>
+
+`cover.jpg` applies to every song with no embedded cover in that particular folder where it sits.
+
+`folder.jpg` applies to every song with no embedded cover in that particular folder where it sits **AND** every folder inside of that folder.
+
+Both come in `.jpg`, `.jpeg` and `.png`. Embedded cover > `cover.jpg` > `folder.jpg`, and the nearer
+folder always wins. For example:
+
+You can put `folder.jpg` into `/Eminem/` and every song without an embedded cover in that directory
+will be using it. You can put `cover.jpg` into `/Eminem/Albums/The Eminem Show/` and it will override
+the effect of `folder.jpg`. Meanwhile, songs with embedded covers ignore both of them and use their
+own cover.
+
+For the album's thumbnails the order is the other way round — `folder.*` → `cover.*` → the
+embedded picture — because a `folder.jpg` was put there to stand for the whole album, while an
+embedded cover belongs to one song. "Set as album thumbnail" overrides all of it.
+
+</div>
+</details>
+
+<details>
+<summary><b>Disk numbers support</b> — divide an album into CDs or vinyl Sides</summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none; width: max-content;">
+  <!-- Первая строка: Картинки и их отдельные подписи -->
+  <tr style="border: none; background: transparent; vertical-align: top;">
+        <!-- Первая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/CD_1.png" alt="Album song list divided by a CD 1 header" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        The list of songs in an album is divided into CD1, CD2 or Side A, Side B
+      </div>
+    </td>
+    <!-- Вторая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 0 0 15px; width: 1px;">
+      <img src="./screenshots/CD_2.png" alt="Album song list where CD 1 ends and CD 2 begins" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        You can achieve it either by splitting an album into different folders (CD1, CD2, Side A, Side B, Disk 1, Disk 2, etc.) or by using a disk number tag in the metadata
+      </div>
+    </td>
+</table>
+</div>
+</details>
+
+### Now Playing
+
+<details>
+<summary>⚙️ <b>Interactive buttons</b> — Like, Shuffle, Repeat, Lyrics, AB Loop, Queue; Bookmark, Playback speed, Sleep timer</summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none; margin: 0; width: auto;">
+  <!-- ВЕРХНИЙ РЯД: ДВЕ КАРТИНКИ -->
+  <tr style="border: none; background: transparent; vertical-align: top;">
+    <!-- Первая колонка (без отступа слева) -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/interactive_buttons_1.png" alt="Now Playing with the Like, Shuffle, Repeat, Lyrics and AB Loop buttons" width="373" style="display: block; max-width: none; margin: 0;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        The set of interactive buttons changes depending on the "Top button hold" choice
+      </div>
+    </td>
+    <!-- Вторая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 0 0 15px; width: 1px;">
+      <img src="./screenshots/interactive_buttons_2.png" alt="Now Playing with the interactive buttons in theme colors" width="373" style="display: block; max-width: none; margin: 0;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        Supports Light / Dark / Theme colors
+      </div>
+    </td>
+  </tr>
+
+  <!-- ОТСТУП МЕЖДУ РЯДАМИ -->
+  <tr style="border: none; background: transparent; height: 20px;">
+    <td colspan="2" valign="top" style="border: none; padding: 0;"></td>
+  </tr>
+
+  <!-- НИЖНИЙ РЯД: ТРЕТЬЯ КАРТИНКА ПО ЦЕНТРУ ПЕРВЫХ ДВУХ -->
+  <tr style="border: none; background: transparent; vertical-align: top;">
+    <td colspan="2" align="center" valign="top" style="border: none; padding: 0; text-align: center;">
+      <div style="display: inline-block; text-align: center;">
+        <img src="./screenshots/interactive_buttons_3.png" alt="Audiobook player with the Bookmark, Playback speed and Sleep timer buttons" width="373" style="display: block; max-width: none; margin: 0 auto;">
+        <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+          Bookmark, Playback speed and Sleep timer are exclusive to the audiobook player
+        </div>
+      </div>
+    </td>
+  </tr>
+</table>
+
+</div>
+</details>
+
+<details>
+<summary>⚙️ <b>Album cover changes</b> — they're bigger, automatic crop and fill added, broken tilt is fixed; option to disable the tilt</summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none; width: max-content;">
+  <!-- Первая строка: Картинки и их отдельные подписи -->
+  <tr style="border: none; background: transparent; vertical-align: top;">
+        <!-- Первая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/cover_tilt_on.png" alt="Now Playing with the album cover tilted" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        Cover tilt On
+      </div>
+    </td>
+    <!-- Вторая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 0 0 15px; width: 1px;">
+      <img src="./screenshots/cover_tilt_off.png" alt="Now Playing with the album cover flat" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        Cover tilt Off
+      </div>
+    </td>
+</table>
+</div>
+</details>
+
+<details>
+<summary>⚙️ <b>A clean Now Playing screen</b> — hide artists and move them into the title</summary>
+<div>
+<p></p>
+
+Two separate options: "Show only the first artist" and "Move hidden artists to the title" (the
+latter can be enabled only when the former is).
+
+    Tree, Shelf Nunny, Lena Kuhn — People
+
+with "Move hidden artists" **Off** becomes
+
+    Tree — People
+
+with "Move hidden artists" **On** becomes
+
+    Tree — People (feat. Shelf Nunny, Lena Kuhn)
+
+Very convenient: that way you can have separated artists in the Artists tab and a clean Now Playing
+screen at the same time, without compromises and without editing metadata.
+
+</div>
+</details>
+
+<details>
+<summary>⚙️ <b>Option to change text and lyrics color</b> — Light / Dark / Theme color</summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none; margin: 0; width: auto;">
+  <!-- ВЕРХНИЙ РЯД: ДВЕ КАРТИНКИ -->
+  <tr style="border: none; background: transparent; vertical-align: top;">
+    <!-- Первая колонка (без отступа слева) -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/color_change_1.png" alt="Icons and text color changed to `Light`" width="373" style="display: block; max-width: none; margin: 0;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        Icons and text color changed to `Light`
+      </div>
+    </td>
+    <!-- Вторая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 0 0 15px; width: 1px;">
+      <img src="./screenshots/color_change_2.png" alt="Icons and text color changed to `Theme color`" width="373" style="display: block; max-width: none; margin: 0;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        Icons and text color changed to `Theme color`
+      </div>
+    </td>
+  </tr>
+
+  <!-- ОТСТУП МЕЖДУ РЯДАМИ -->
+  <tr style="border: none; background: transparent; height: 20px;">
+    <td colspan="2" valign="top" style="border: none; padding: 0;"></td>
+  </tr>
+
+  <!-- НИЖНИЙ РЯД: ТРЕТЬЯ КАРТИНКА ПО ЦЕНТРУ ПЕРВЫХ ДВУХ -->
+  <tr style="border: none; background: transparent; vertical-align: top;">
+    <td colspan="2" align="center" valign="top" style="border: none; padding: 0; text-align: center;">
+      <div style="display: inline-block; text-align: center;">
+        <img src="./screenshots/color_change_3.png" alt="Lyrics color changed to `Theme color`" width="373" style="display: block; max-width: none; margin: 0 auto;">
+        <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+          Lyrics color changed to `Theme color`
+        </div>
+      </div>
+    </td>
+  </tr>
+</table>
+
+</div>
+</details>
+
+<p>&#9679;&ensp;⚙️ <b>Top button hold to open Lyrics / Queue / Bookmark / AB Loop</b></p>
+
+<p>&#9679;&ensp;⚙️ <b>Long artists/albums/titles scroll</b></p>
+
+<p>&#9679;&ensp;<b>Lyrics fix</b> — long lines no longer extend beyond the edges of the screen</p>
+
+### Menu
+
+<details>
+<summary>⚙️ <b>Alphabetical scroll</b></summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none;">
+  <tr style="border: none; background: transparent; vertical-align: top;">
+    <!-- Первая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/alpha_scroll.png" alt="All songs list with the alphabetical scroll letter over it" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        Starts after a number of wheel scrolls you choose
+      </div>
+    </td>
+</table>
+
+</div>
+</details>
+
+<details>
+<summary>⚙️ <b>Selection follows currently playing song</b></summary>
+<div>
+<p></p>
+
+When the screen is locked, and while the scroll wheel is at rest, the selection automatically follows the song currently playing
+
+The selection switches to manual mode as soon as the scroll wheel is used. <br>
+Once scrolling stops, a timer starts; after it expires, the selection moves to the currently playing song, and automatic mode resumes. <br>
+Opening the context menu or MultiSelect mode resets the timer and pauses it.
+
+When you open the list containing the currently playing song, the selection immediately moves to it. Exiting the player also sets the selection to it.
+
+</div>
+</details>
+
+<details>
+<summary>⚙️ <b>Show songs only by the selected artist inside Artists → Album</b></summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none;">
+  <tr style="border: none; background: transparent; vertical-align: top;">
+    <!-- Первая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/artist_scope_on.png" alt="Album opened from Artists showing only the selected artist's songs" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        On, Beat Culture artist is selected
+      </div>
+    </td>
+    <!-- Вторая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 0 0 15px; width: 1px;">
+      <img src="./screenshots/artist_scope_off.png" alt="The same album showing every song on it" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        Off, Beat Culture artist is selected
+      </div>
+    </td>
+  </tr>
+</table>
+</div>
+</details>
+
+<details>
+<summary>⚙️ <b>Main menu and Settings margins fixes</b></summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none; width: max-content;">
+  <!-- Первая строка: Картинки и их отдельные подписи -->
+  <tr style="border: none; background: transparent; vertical-align: top;">
+        <!-- Первая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/fixed_margins_1.png" alt="Main menu with the fixed margins" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        On, fixed margins
+      </div>
+    </td>
+    <!-- Вторая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 0 0 15px; width: 1px;">
+      <img src="./screenshots/fixed_margins_2.png" alt="Main menu with the stock margins" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        Off, stock margins
+      </div>
+    </td>
+
+  </tr>
+  <!-- Вторая строка: Общий текст по центру -->
+  <tr style="border: none; background: transparent;">
+    <td colspan="2" align="center" valign="top" style="border: none; padding-top: 20px; text-align: center; font-size: 15px; line-height: 1.5;">
+      Worth turning off with themes whose backgrounds are drawn for stock margins — bundled Melody Munchkin, for example.
+    </td>
+  </tr>
+</table>
+</div>
+</details>
+
+<details>
+<summary>⚙️ <b>Release year in album names</b></summary>
+<div>
+<p></p>
+<img src="./screenshots/cover_set_1.png" alt="Album list with the release year in every album name" width="373">
+
+</div>
+</details>
+
+<details>
+<summary><b>Show albums instead of songs when opening an artist page</b></summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none; width: max-content;">
+  <!-- Первая строка: Картинки и их отдельные подписи -->
+  <tr style="border: none; background: transparent; vertical-align: top;">
+        <!-- Первая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/artists_show_albums.png" alt="Artist page listing albums, with the Show all songs button on top" width="373" style="display: block; max-width: none; margin: 0 auto;">
+    </td>
+    <!-- Вторая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 0 0 15px; width: 1px;">
+      <img src="./screenshots/artists_show_albums_all_songs.png" alt="Artist page listing every song instead of albums" width="373" style="display: block; max-width: none; margin: 0 auto;">
+    </td>
+  </tr>
+  <!-- Вторая строка: Общий текст по центру -->
+  <tr style="border: none; background: transparent;">
+    <td colspan="2" align="center" valign="top" style="border: none; padding-top: 20px; text-align: center; font-size: 15px; line-height: 1.5;">
+      You can use "Show all songs" button to replicate stock behaviour.
+    </td>
+  </tr>
+</table>
+</div>
+</details>
+
+<details>
+<summary><b>"Show all songs" and "Shuffle" buttons in Folders</b></summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none;">
+  <tr style="border: none; background: transparent; vertical-align: top;">
+    <!-- Первая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/folders_show_all.png" alt="Folder holding sub-folders, with the Show all songs button on top" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        A folder holding sub-folders gets "Show all songs"
+      </div>
+    </td>
+    <!-- Вторая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 0 0 15px; width: 1px;">
+      <img src="./screenshots/folders_shuffle.png" alt="Folder holding only songs, with the Shuffle button on top" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        A folder holding only songs gets "Shuffle"
+      </div>
+    </td>
+  </tr>
+</table>
+
+</div>
+</details>
+
+<details>
+<summary><b>Currently playing song indicator</b></summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none; width: max-content;">
+  <tr style="border: none; background: transparent; vertical-align: top;">
+        <!-- Первая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/playing_indicator.png" alt="Song list with the currently playing track marked by an arrow" width="373" style="display: block; max-width: none; margin: 0 auto;">
+    </td>
+</table>
+
+</div>
+</details>
+
+<details>
+<summary><b>Option to rename your Bluetooth devices</b></summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none; width: max-content;">
+  <tr style="border: none; background: transparent; vertical-align: top;">
+        <!-- Первая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/bluetooth_rename.png" alt="Paired Bluetooth device with the Forget device and Rename device menu" width="373" style="display: block; max-width: none; margin: 0 auto;">
+    </td>
+</table>
+
+</div>
+</details>
+
+<details>
+<summary><b>Library has been moved to its own section in E-books</b></summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none; width: max-content;">
+  <tr style="border: none; background: transparent; vertical-align: top;">
+        <!-- Первая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/ebook_library.png" alt="E-books section with Continue reading, Local files and Library" width="373" style="display: block; max-width: none; margin: 0 auto;">
+    </td>
+</table>
+
+</div>
+</details>
+
+<details>
+<summary><b>Manual album thumbnail selection</b></summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none; margin: 0; width: auto;">
+  <!-- ВЕРХНИЙ РЯД: ДВЕ КАРТИНКИ -->
+  <tr style="border: none; background: transparent; vertical-align: top;">
+    <!-- Первая колонка (без отступа слева) -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/cover_set_1.png" alt="Album list using the CD 1 cover as the thumbnail" width="373" style="display: block; max-width: none; margin: 0;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        Thumbnail from CD1 is selected by default
+      </div>
+    </td>
+    <!-- Вторая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 0 0 15px; width: 1px;">
+      <img src="./screenshots/cover_set_2.png" alt="Context menu with the Set as album thumbnail item" width="373" style="display: block; max-width: none; margin: 0;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        Changing the thumbnail
+      </div>
+    </td>
+  </tr>
+
+  <!-- ОТСТУП МЕЖДУ РЯДАМИ -->
+  <tr style="border: none; background: transparent; height: 20px;">
+    <td colspan="2" valign="top" style="border: none; padding: 0;"></td>
+  </tr>
+
+  <!-- НИЖНИЙ РЯД: ТРЕТЬЯ И ЧЕТВЕРТАЯ КАРТИНКИ РЯДОМ -->
+  <tr style="border: none; background: transparent; vertical-align: top;">
+    <!-- Третья картинка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/cover_set_3.png" alt="Album list using the CD 2 cover as the thumbnail" width="373" style="display: block; max-width: none; margin: 0;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        Thumbnail from CD2 is selected
+      </div>
+    </td>
+    <!-- Четвертая картинка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 0 0 15px; width: 1px;">
+      <img src="./screenshots/cover_set_4.png" alt="Context menu with the Reset thumbnail item" width="373" style="display: block; max-width: none; margin: 0;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        Resetting to default, only visible if the thumbnail was manually set
+      </div>
+    </td>
+  </tr>
+</table>
+
+</div>
+</details>
+
+<p>&#9679;&ensp;<b>Optimized album cover previews</b> — no more crashes, no need to resize covers manually</p>
+
+<p>&#9679;&ensp;<b>"Open album", "Open artist", "Open source" buttons in context menu</b></p>
+
+<p>&#9679;&ensp;<b>"Sort by Date added"</b> — for songs within playlists</p>
+
+<p>&#9679;&ensp;<b>"Sort by Release year"</b> — for albums</p>
+
+<p>&#9679;&ensp;<b>Reboot button</b></p>
+
+<p>&#9679;&ensp;<b>/Music/ and /Videos/ are opened by default in Folders</b> — instead of the SD card root</p>
+
+<p>&#9679;&ensp;<b>Genres and Search menu rework</b> — revised to reflect the changes and align with the other sections</p>
+
+### System
+
+<details>
+<summary>⚙️ <b>Favorites system</b></summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none; width: max-content;">
+  <!-- Первая строка: Картинки и их отдельные подписи -->
+  <tr style="border: none; background: transparent; vertical-align: top;">
+        <!-- Первая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/favorites_1.png" alt="Now Playing with the song added to Favorites" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        You can add and remove songs from your favorites by tapping the heart icon in Now Playing
+      </div>
+    </td>
+    <!-- Вторая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 0 0 15px; width: 1px;">
+      <img src="./screenshots/favorites_2.png" alt="Context menu with the Add to Favorites item" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        Alternatively, you can add songs to the "Favorites" playlist just as you would to any other playlist; the likes will be added or removed automatically
+      </div>
+    </td>
+
+  </tr>
+  <!-- Вторая строка: Общий текст по центру -->
+  <tr style="border: none; background: transparent;">
+    <td colspan="2" align="center" valign="top" style="border: none; padding-top: 20px; text-align: center; font-size: 15px; line-height: 1.5;">
+      When you turn off this setting, the playlist and the likes you've given aren't deleted - they're simply hidden
+    </td>
+  </tr>
+</table>
+</div>
+</details>
+
+<details>
+<summary>⚙️ <b>After deleting a song also delete the folder it was stored in</b> — only if it is empty</summary>
+<div>
+<p></p>
+
+When songs or albums are deleted, the folders that held them are deleted as well, if they are left
+empty.
+
+A folder holding nothing but external covers (`cover.*` and `folder.*`), lyrics (`*.lrc`) and empty
+folders counts as empty and goes too.
+
+This does not apply to the Folders section, where deleting works as usual.
+</div>
+</details>
+
+<details>
+<summary>⚙️ <b>Better keyboard and typing</b> — case switch, caps lock, three layouts</summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none; width: max-content;">
+  <!-- Первая строка: Картинки и их отдельные подписи -->
+  <tr style="border: none; background: transparent; vertical-align: top;">
+        <!-- Первая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/keyboard_1.png" alt="On-screen keyboard on the Latin layout, its EN badge shown" width="373" style="display: block; max-width: none; margin: 0 auto;">
+    </td>
+    <!-- Вторая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 0 0 15px; width: 1px;">
+      <img src="./screenshots/keyboard_2.png" alt="On-screen keyboard on the punctuation and digits layout" width="373" style="display: block; max-width: none; margin: 0 auto;">
+    </td>
+</table>
+<br>
+
+- Top button hold — change the keyboard layout
+- Play button press — switch between uppercase/lowercase letters
+- Play button hold — CapsLock
+</div>
+</details>
+
+<details>
+<summary><b>⚙️ Data backup</b> — settings, likes, playlists, bookmarks and reading progress</summary>
+<div>
+<p></p>
+
+Updating the firmware with an updater wipes the app data, but not the SD card. "Data backup" saves your data to `/better-Y/backup/` on the SD card and loads it back.
+
+Along with the better-Y settings, the archive keeps the theme, the stock settings, the library with
+playlists, bookmarks and audiobook progress. Bluetooth devices can't be saved.
+
+The five newest archives are kept. After loading one the player restarts.
+
+</div>
+</details>
+
+<p>&#9679;&ensp;⚙️ <b>Disable auto screen lock while reading lyrics and books</b></p>
+
+<details>
+<summary><b>Play queue implementation</b></summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none;">
+  <tr style="border: none; background: transparent; vertical-align: top;">
+    <!-- Первая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/queue_1.png" alt="Queue screen listing what plays next" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        Depending on your settings, you can open the queue by pressing the top button in "Now Playing" screen or by using the corresponding interactive button
+      </div>
+    </td>
+    <!-- Вторая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 0 0 15px; width: 1px;">
+      <img src="./screenshots/queue_2.png" alt="Context menu with the Add to queue item" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        You can add a song to the queue using the 'Add to Queue' button in the context menu, which appears almost everywhere. A queued track slots in right after the current song
+      </div>
+    </td>
+  </tr>
+</table>
+</div>
+</details>
+
+<details>
+<summary><b>Extended themes support</b> — themes work as usual, plus screens that were previously hardcoded now use the theme designs and everything new adapts to them</b></summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none;">
+  <tr style="border: none; background: transparent; vertical-align: top;">
+    <!-- Первая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/themes_support.png" alt="Queue screen with custom themes" width="800" style="display: block; max-width: none; margin: 0 auto;">
+    </td>
+</table>
+
+</div>
+</details>
+
+<details>
+<summary><b>A proper cache system</b> — no more text and images blinking, system works faster</summary>
+<div>
+<p></p>
+
+<table border="0" style="border-collapse: collapse; border: none;">
+  <tr style="border: none; background: transparent; vertical-align: top;">
+    <!-- Первая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 15px 0 0; width: 1px;">
+      <img src="./screenshots/cache_1.png" alt="better-Y menu with the Cache library dialog open" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        The cache builds itself as you use the player, and "Cache library" button does the whole library in one go
+      </div>
+    </td>
+    <!-- Вторая колонка -->
+    <td width="400" align="center" valign="top" style="border: none; padding: 0 0 0 15px; width: 1px;">
+      <img src="./screenshots/cache_2.png" alt="Clear cache dialog with the size of every category" width="373" style="display: block; max-width: none; margin: 0 auto;">
+      <div align="center" style="padding-top: 8px; font-size: 14px; line-height: 1.4; text-align: center;">
+        It costs roughly 4 MB per 1000 songs. It may be larger even with the same number of songs, depending on the number of albums
+      </div>
+    </td>
+  </tr>
+</table>
+</div>
+</details>
+
+
+<details>
+<summary><b>Existing song navigation logic changes</b></summary>
+<div>
+<p></p>
+
+The track-switching functionality, repeat and shuffle behavior have been updated. <br>
+Also, selecting a currently playing song from the list no longer starts it from the beginning
+</div>
+</details>
+
+<p>&#9679;&ensp;<b>Based on 3.1.2 firmware</b> — AirPods fix included</p>
+
+<p>&#9679;&ensp;<b>Scroll and overall optimizations</b> — every menu is faster and more responsive, the library scans quicker</p>
+
+<p>&#9679;&ensp;<b>Double press of the play button opens "Now Playing"</b> — from everywhere</p>
+
+<p>&#9679;&ensp;<b>"Update library"</b> — re-reads metadata and cover art for songs already in the library if you have changed it</p>
+
+<p>&#9679;&ensp;<b>Scroll wheel is silent while the screen is off</b> — the player no longer clicks in a pocket when Key lock is off</p>
+
+<p>&#9679;&ensp;<b>Force reboot</b> — press and hold the top + bottom buttons</p>
+
+<p>&#9679;&ensp;<b>"File extensions" setting fix</b> — folder names are no longer erased after a dot</p>
+
+<p>&#9679;&ensp;<b>UI, translations and text fixes</b></p>
+
+<p>&#9679;&ensp;<b>Improved support for text encodings</b> — for Cyrillic, Greek, Hebrew and Thai</p>
+
+<p>&#9679;&ensp;<b>Russian now supports fonts from custom themes</b></p>
+
+<p>&#9679;&ensp;<b>And a lot of other minor fixes and corrections</b></p>
+
+****
+
+## Before you install
+
+- **Innioasis Y1, Type A only** <br>
+- **If you have used any other custom firmware, a clean install is recommended**
+
+## Install
+
+- **Options A, B and C (without step 4) write the whole firmware, `usrdata` included**: settings, playlists, likes, reading progress, bookmarks will be lost. Your files on the SD card are untouched.
+- If you have stock 3.0.7 or 3.1.2 firmware installed (anything lower wasn't tested) and want to keep your `usrdata` - use Option C with step 4.
+
+### Option A — [Updater CE](https://innioasis.app/) by Ryan Specter
+
+Install Updater CE, then select better-Y from the Software drop down menu and select "Install/Restore" to be guided through the install process.
+
+### Option B — [Official Innioasis Updater](https://www.reddit.com/r/innioasis/comments/1v9vsvj/comment/p0nfp8g/?utm_source=share&utm_medium=web3x&utm_name=web3xcss&utm_term=1&utm_content=share_button/) (`rom.zip`)
+
+Download `rom.zip` from the Releases page, open the updater, press "Choose Package", choose the archive, press "Start Flash" and follow instructions on screen.
+
+> [!NOTE]
+> If you've ever flashed a ROM using the Official Innioasis Updater, make sure there isn't a `.rom_extracted` folder next to the `rom.zip` file. Otherwise, the old files from that folder will be flashed instead of the new ones from `rom.zip`.
+
+### Option C — SP Flash Tool (`rom.zip`)
+
+1. Download `rom.zip` from the Releases page, extract it
+2. Open the SP Flash Tool, press "choose" and locate Scatter-loading File (`MT6572_Android_scatter.txt`)
+3. Make sure that "Download Only" is set
+4. (Optional, if you already have stock 3.0.7 or 3.1.2 installed) Uncheck everything except for ANDROID (`system.img`)
+5. Disconnect the player from the PC (if it's connected), then turn it off
+6. Press Download
+7. Connect the player to the PC and wait for the installation to complete
+
+## Update
+
+>[!NOTE]
+>To move to a newer better-Y version with all of your settings, playlists, likes, reading progress and bookmarks, use one of the two options below.
+
+### Option 1 — Updater CE / Official Innioasis Updater / SP Flash Tool
+
+- Available starting with version 1.1.0.
+1. Before installing a new version, use the `Data backup` button in the better-Y menu to save your data
+2. Install a new version using any option you prefer from the [Install section](#install)
+3. After a successful installation, use this same button to restore your settings from the saved backup
+
+### Option 2 — adb install (`better-Y_3.1.2_<version>.apk`)
+
+1. Download [platform-tools](https://developer.android.com/tools/releases/platform-tools) and extract the files to a folder
+2. Place `better-Y_3.1.2_<version>.apk` in that same folder
+3. Connect the player to your PC and open a terminal in that folder
+4. Run the following command:
+
+```
+adb install -r better-Y_3.1.2_<version>.apk && adb reboot
+```
+
+If you're using PowerShell, use this one instead:
+```
+./adb install -r better-Y_3.1.2_<version>.apk; ./adb reboot
+```
+
+### Option 3 — SP Flash Tool (`system.img` only)
+
+Go to [Install](#install) and follow all of the Option C steps (including 4).
+
+>[!WARNING]
+> If you have ever updated with Option 2, switching to Option 3 **deletes your user data** - your settings, playlists, likes, reading progress and bookmarks are lost. Your files on the SD card are untouched.
+>
+> Going the other way is OK: after updating with Option 3 you may keep updating with Option 2.
+
+## Reporting a bug
+
+- After the bug occurs, open "better-Y" → [Tools] → "Save diagnostic log". Create an issue, describe the bug and attach the log file. If possible, include the steps to reproduce it. 
+
+## Building it yourself
+
+### Step 1 — collect the inputs
+
+- `com.innioasis.y1_3.1.2.apk` from your own device or from stock 3.1.2 firmware (`/system/app/`) —
+  MD5 `C342B4A8DEAEF2700FE8EBBB2C299F5C`, 58 997 249 bytes;
+- **apktool 2.11.1** exactly — a unified diff only applies to an identically decompiled tree;
+- a JDK, plus `zipalign` and `apksigner` from any Android build-tools;
+- the AOSP platform testkey `platform.pk8` and `platform.x509.pem`, into `build/keys/`. 
+- [the stock 3.1.2 firmware archive](https://github.com/y1-community/y1-stock-rom/releases/tag/Latest-3.1.2), in `ROM/` under exactly this name:
+  `y1-community_y1-stock-rom_Latest-3.1.2.zip` — the same one Updater  CE installs as clean firmware;
+- a Linux userland for the image work — `python3`, `simg2img`, `debugfs` and `e2fsck`. On Windows,
+  WSL covers it.
+
+### Step 2 — build the APK
+
+```
+apktool d -f -o tree com.innioasis.y1_3.1.2.apk   # decompile the stock launcher
+./build/patch.sh --apply tree                     # apply this repository onto it
+./build/build.sh                                  # build, sign, verify
+```
+
+On Windows the same three steps are `patch.ps1 -Apply tree` and `build.ps1` — the two sets of
+scripts do the same work in the same order. Each looks for its tools in an environment variable
+first, then under `build/tools` and `build/sdk`, then on `PATH`; the comment at the top of
+`build/lib.sh` names them. The finished APK lands in `build/out/`.
+
+### Step 3 — build `rom.zip`
+
+```
+./build/rom.sh                                    # on Windows: build\rom.ps1
+```
+
+It takes the newest APK from `build/out`, puts it into the `system.img` of the community base
+(`debugfs`, no mounting and no root), packs that together with the rest of the factory 3.1.2 set,
+and writes `build/rom-out/rom.zip`. Every step checks itself: the launcher is read back out of the
+image and compared with the APK, `e2fsck` runs over the result, and the sparse image is expanded
+again and compared byte for byte with the raw one. It takes about a minute.
+
+### Step 4 — install it
+
+### Changing the mod's own code
+
+The mod's own classes are written in Java, under `build/ipp-java/src`; the `.smali` in
+`files/smali_classes2/` is what they compile to, and it ships with the set so that the build above
+needs nothing beyond apktool and the signer. Edit the Java and there is one more step in front of
+the build:
+
+```
+./build/ipp-java.sh                               # compile the Java sources into smali
+./build/build.sh                                  # build, sign, verify
+```
+
+Run it **after** a first successful build, never before it: `ipp-java` compiles against stubs it
+makes with dex2jar out of the newest APK in `build/out`, and a fresh clone has none — it stops with
+`No APK in build/out to generate stubs from`. It also wants `d8`, `baksmali`, `dex2jar` and an
+API 17 `android.jar` on top of the JDK; the comment at the top of `build/lib.sh` names the
+environment variables that point at them.
+
+## What's in this repository
+
+The mod is a set of edits to a stock launcher. So what you get is the difference and the exact recipe to reproduce it:
+
+| | |
+|---|---|
+| `files/` | code and resources, plus the stock binaries the mod replaces |
+| `stock.diff` | a unified diff of the stock files |
+| `delete.txt` | stock files the mod removes |
+| `manifest.json` | the pinned inputs: apktool version, the factory APK's name, size and MD5 |
+| `build/` | the build scripts, in PowerShell and bash alike, and the Java sources they compile |
+| `build/rom-tools/` | the python that builds the boot images |
+| `screenshots/` | the pictures on this page |
+| `LICENSE` | MIT, and what it does and does not cover |
+
+`./build/patch.sh --verify` (or `patch.ps1 -Verify`) proves the set is complete: it decompiles the
+factory APK, applies everything here, and compares the result against the tree you actually build
+from.
+
+## License
+
+better-Y is released under the [MIT License](LICENSE), Copyright (c) 2026 better-Y Team. That
+license covers **only what was written for this project** — the code and resources added to the
+launcher, and the build scripts here.
+
+Everything else keeps its own. The Innioasis Y1 launcher and the firmware it ships with are
+proprietary software of INNIOASIS; **all rights in that code belong to its authors**, this project
+only modifies it, and no license of ours applies to any of it. The same goes for the third-party
+libraries inside the launcher, which carry the licenses of their own authors. `LICENSE` says in
+full which part is which. No affiliation with or endorsement by INNIOASIS is claimed.
+
+**The software is provided "as is", without warranty of any kind.** Installing it means replacing
+your device's system partition, and you do so at your own risk: in no event are the authors liable
+for any damage, data loss or bricked hardware arising from it.
