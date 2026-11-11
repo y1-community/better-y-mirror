@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-11-11T00:36:09Z",
+  "generated_at": "2026-11-11T01:35:23Z",
   "source_repo": "Leska1337/better-Y",
   "mirror_repo": "y1-community/better-y-mirror",
   "title_prefix": "Portable Flashing Package: ",
@@ -64,7 +64,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 541109273,
-          "sha256": "0a2f171578411839270ecade4e0ab208a62a7bc0970e5be20bd5eb199765a624",
+          "sha256": "1f25c42da82053e440d5fd9ebe5c4c11394f4263a70803ff368cebedd97a6982",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.1.0/rom-linux.zip"
         },
         {
@@ -74,7 +74,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 366014215,
-          "sha256": "bef3ce7e9d6ceb9254affe1f3abe31890a6370afbd6536cb118dd574db47a8e1",
+          "sha256": "b60be826658f3d19dfb5d7b7d702b75950548bf6eaf0b60e09257ba7e70264ce",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.1.0/rom-linux-arm64.zip"
         },
         {
@@ -84,7 +84,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 300960097,
-          "sha256": "0081e87b8785f67ebde3fc4cb7f04952890d740afe4fd278b04b5241120096bd",
+          "sha256": "5509e733c4ee4710e70ac39b96f860e922e23691f826ea4a9016df50da4c6bd1",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.1.0/rom-macos.zip"
         },
         {
@@ -93,8 +93,8 @@
           "platform": "windows",
           "model": "Y1",
           "type": "Type A",
-          "size": 386988919,
-          "sha256": "de356ec59f7540faf3b455394e63e92ac8034355860e052146166d875e095ed2",
+          "size": 417237757,
+          "sha256": "5cafc78dedc90458a2e7538adee0dd3653e242265fddd3c90bda50f22abe4f66",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.1.0/rom-windows.zip"
         }
       ],
@@ -120,7 +120,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 540690170,
-          "sha256": "dca37b683c709c6166f6b55073262b5f7c2fce06e6caf90877ac99293dcc7380",
+          "sha256": "51208c408ef9486498acce5e102751d9816cf1c1c0c5cef7bd529c5c881cab66",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.0.0/rom-linux.zip"
         },
         {
@@ -130,7 +130,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 365595112,
-          "sha256": "5057950a2b47a3416ede9518a18a7e670ed91b144c0917eb5242a9f0b22ec7ea",
+          "sha256": "9abba0e9736e74efea0294d3fe5f98f74b8c6f95abde89d84d3d3b51666a0aa2",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.0.0/rom-linux-arm64.zip"
         },
         {
@@ -140,7 +140,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 300540980,
-          "sha256": "76c01d4b1c05a88e6719614bccee3a0cc9d6e010cdbd71b0b89692621ef3df90",
+          "sha256": "fbb90cda16e7575a7dcd76bf8bf0e31f062681e4646ac287580939cd4832f8a8",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.0.0/rom-macos.zip"
         },
         {
@@ -149,8 +149,8 @@
           "platform": "windows",
           "model": "Y1",
           "type": "Type A",
-          "size": 386569816,
-          "sha256": "5a7cde526d59b2a98344cc449ebe41c08593fb48649e526b85f249bbef7ab1d0",
+          "size": 416818654,
+          "sha256": "29234dcc779fd5220dfe6d73325e5790c8b67f8e853027ecc2f77ca35c9351e1",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.0.0/rom-windows.zip"
         }
       ],
