@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-11-12T20:12:28Z",
+  "generated_at": "2026-11-20T13:13:50Z",
   "source_repo": "Leska1337/better-Y",
   "source_fallback_repo": "",
   "mirror_repo": "y1-community/better-y-mirror",
@@ -84,7 +84,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 494326123,
-          "sha256": "e376862dbb89aad9d6bb0cfcdcbec021afce53c25cd7f4baca4a4a72ba6d4bd2",
+          "sha256": "01aac0d48821b9f30283b78ecca28bc189b5279c1ec4882caf3c3e9d0181ee8a",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.1.0/rom-windows.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.1.0/rom-windows.zip"
         },
@@ -95,7 +95,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 256087282,
-          "sha256": "2a354f315939c961fa26888c4a626a13254cc7422661cb07a7717f9403cdfa2c",
+          "sha256": "4c202a84759fb3f18fcce196c1a1b5b59721cf28188cc0e97a2ed5d56094caca",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.1.0/rom-windows-legacy.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.1.0/rom-windows-legacy.zip"
         },
@@ -105,8 +105,8 @@
           "platform": "linux",
           "model": "Y1",
           "type": "Type A",
-          "size": 541647447,
-          "sha256": "eb8b187a807bbdaeadfdb91f9d13e25a44f7106d7bee70ac01125a16e3b03d73",
+          "size": 546346024,
+          "sha256": "967d61b0eae09940b71ca4ff54001bdb1c989f3736daa90a4963ea4c50c4d4dd",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.1.0/rom-linux.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.1.0/rom-linux.zip"
         },
@@ -116,8 +116,8 @@
           "platform": "linux-arm64",
           "model": "Y1",
           "type": "Type A",
-          "size": 366551681,
-          "sha256": "3fc80ec169f9774358ee058321b6e79df72b72538b734294c19bc80766044087",
+          "size": 371250785,
+          "sha256": "3a70ef5340f3e5211821272a2fa351b6bf976d99db7c3ed9d2450a0bdab96f00",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.1.0/rom-linux-arm64.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.1.0/rom-linux-arm64.zip"
         },
@@ -128,7 +128,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 254501563,
-          "sha256": "33db2ea3f7d32dd28b0d1d3de2c4b99d1fc896dbbbe24aa02bdaaa2ed84d7527",
+          "sha256": "e43b3fcc13b75f59e2eedd8cc96d707ddad14d537b6ba7adb9d0a30343634c80",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.1.0/rom-linux-legacy.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.1.0/rom-linux-legacy.zip"
         },
@@ -138,8 +138,8 @@
           "platform": "macos",
           "model": "Y1",
           "type": "Type A",
-          "size": 300960097,
-          "sha256": "69228209aaa137dd9fbcdb8579f2b22fcf7ee5cc52f6fba6be9a54d0a39a5683",
+          "size": 343096640,
+          "sha256": "b9b8519fa8a68883b6b0ce7d050b4f5f68abbe83e199c2db8ae03a3fb01c14c8",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.1.0/rom-macos.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.1.0/rom-macos.zip"
         }
@@ -167,7 +167,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 493907020,
-          "sha256": "85d71dd3b80bea9afb5e25fa19c511254e59e804ba6970ae98fb17ab85026760",
+          "sha256": "ef02e23c18e1b571b7a989e5b9e233d28ec33d0c7108b976fde6efa957804da3",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.0.0/rom-windows.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.0.0/rom-windows.zip"
         },
@@ -178,7 +178,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 255668179,
-          "sha256": "69de2cfa7f88543fffa3a008e360a64518efab8220de6cf2cdf1d195a689439d",
+          "sha256": "ac72751e0fdd0b5ead2b882d5bbc01a77161b8a6d7e83b535a014ca3ef595ee2",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.0.0/rom-windows-legacy.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.0.0/rom-windows-legacy.zip"
         },
@@ -188,8 +188,8 @@
           "platform": "linux",
           "model": "Y1",
           "type": "Type A",
-          "size": 541228344,
-          "sha256": "e0a8fe43ef0c1353aa0870cd911904bff841faec80d63146870620237947ac0e",
+          "size": 545926921,
+          "sha256": "c80238c00c5c6cb30c9c3b4a781eefb9726155e7b87e8009f10ec19e9584f64e",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.0.0/rom-linux.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.0.0/rom-linux.zip"
         },
@@ -199,8 +199,8 @@
           "platform": "linux-arm64",
           "model": "Y1",
           "type": "Type A",
-          "size": 366132578,
-          "sha256": "8342f78d4e7454ed077cc89eff8d7337aff1de47f8e6a42db1c9aaa41ce9f6a7",
+          "size": 370831682,
+          "sha256": "d5ff1fb72d7d50bbc914d39b0601b43d099e441fc93408b55095bc14b88b0891",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.0.0/rom-linux-arm64.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.0.0/rom-linux-arm64.zip"
         },
@@ -211,7 +211,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 254082460,
-          "sha256": "7ede87b0b24f917cddf40e9cce717f3296aa1b196e8e25e07cdddabefe8abd35",
+          "sha256": "ffed1c1ddcff814ef128a38fadeb63d9c0b26fa7121344b3711e56298614fbda",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.0.0/rom-linux-legacy.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.0.0/rom-linux-legacy.zip"
         },
@@ -221,8 +221,8 @@
           "platform": "macos",
           "model": "Y1",
           "type": "Type A",
-          "size": 300540980,
-          "sha256": "f3463aeb38db5641180207adec82c5bd9740f79f40c26bf8064eb89009582ce0",
+          "size": 342677523,
+          "sha256": "8b223ce6c2577ff1de298f62a404b37ad19348329909678b504f95b16be6544c",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.0.0/rom-macos.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.0.0/rom-macos.zip"
         }
