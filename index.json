@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-11-21T02:36:47Z",
+  "generated_at": "2026-11-21T03:58:11Z",
   "source_repo": "Leska1337/better-Y",
   "source_fallback_repo": "",
   "mirror_repo": "y1-community/better-y-mirror",
@@ -105,8 +105,8 @@
           "platform": "linux",
           "model": "Y1",
           "type": "Type A",
-          "size": 482710201,
-          "sha256": "d4594621694f83a16050efa2ce0293d74f278d5f10897703dc95e1bdd32dec56",
+          "size": 482758969,
+          "sha256": "5117dfc38efcaa234aebc082998e0891ddd0040a025f80427869084ca417a1ad",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.1.0/rom-linux.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.1.0/rom-linux.zip"
         },
@@ -116,8 +116,8 @@
           "platform": "linux-arm64",
           "model": "Y1",
           "type": "Type A",
-          "size": 307615759,
-          "sha256": "487445f69f045c674d48048cbac75659a3e5e6a6eabaca31981d5bdcc85579c9",
+          "size": 307665690,
+          "sha256": "727a76b49a69a219dc608f28e30f3ad0ca2c26efcfe433c1dbdfd94ac439bdd2",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.1.0/rom-linux-arm64.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.1.0/rom-linux-arm64.zip"
         },
@@ -138,8 +138,8 @@
           "platform": "macos",
           "model": "Y1",
           "type": "Type A",
-          "size": 290533389,
-          "sha256": "9c6312482384e657607297b1efa2d6ceb4b05c1f0000abee0d87bf9ea5accb5c",
+          "size": 290487531,
+          "sha256": "7d9c5cf7cb40bdb3b5cea74902bd36a88ad6a214c5b1e210f448c6eb6e14a23a",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.1.0/rom-macos.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.1.0/rom-macos.zip"
         }
@@ -188,8 +188,8 @@
           "platform": "linux",
           "model": "Y1",
           "type": "Type A",
-          "size": 482291098,
-          "sha256": "289864c7184feb61f9a38b9aed26cd1cc21064c783f3737de43f672805065d86",
+          "size": 482339866,
+          "sha256": "1216063c4a9b849220220b60ebb7eb539aebd6a5f9748b30bb156f2f81a59ff1",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.0.0/rom-linux.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.0.0/rom-linux.zip"
         },
@@ -199,8 +199,8 @@
           "platform": "linux-arm64",
           "model": "Y1",
           "type": "Type A",
-          "size": 307196656,
-          "sha256": "6da4eab389c2a1cbf64f655ba3f3c930e25a6e23168f51492dfd34e3b2d3bc38",
+          "size": 307246587,
+          "sha256": "ed383e1e0231c44bd91107b2cc1ef6150098cc3c3609a4e271ff573834668303",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.0.0/rom-linux-arm64.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.0.0/rom-linux-arm64.zip"
         },
@@ -221,8 +221,8 @@
           "platform": "macos",
           "model": "Y1",
           "type": "Type A",
-          "size": 290114272,
-          "sha256": "ba4aebce0d38fd085ab268214ade32866a1ffdc539026258d6aaef5a63692217",
+          "size": 290068414,
+          "sha256": "09aa7488740cf2c28d0f73c817340ebe1599632548301cab060d563affb70818",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.0.0/rom-macos.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.0.0/rom-macos.zip"
         }
