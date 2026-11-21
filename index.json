@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "generated_at": "2026-11-21T03:58:11Z",
+  "generated_at": "2026-11-21T11:25:59Z",
   "source_repo": "Leska1337/better-Y",
   "source_fallback_repo": "",
   "mirror_repo": "y1-community/better-y-mirror",
@@ -106,7 +106,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 482758969,
-          "sha256": "5117dfc38efcaa234aebc082998e0891ddd0040a025f80427869084ca417a1ad",
+          "sha256": "82eacc0ea1e5d2be052e5710c49a5c20aacb7e80f631d2d54717dd906698442d",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.1.0/rom-linux.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.1.0/rom-linux.zip"
         },
@@ -117,7 +117,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 307665690,
-          "sha256": "727a76b49a69a219dc608f28e30f3ad0ca2c26efcfe433c1dbdfd94ac439bdd2",
+          "sha256": "5bb8730cf613ebed78cb1c2e26f707c7cc0172efd1d50d3673c4d67311e935d4",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.1.0/rom-linux-arm64.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.1.0/rom-linux-arm64.zip"
         },
@@ -189,7 +189,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 482339866,
-          "sha256": "1216063c4a9b849220220b60ebb7eb539aebd6a5f9748b30bb156f2f81a59ff1",
+          "sha256": "cc36e36b2a095d17985107cea793a9caf9a03a9a9fa9a637f5d3ea1964d9c160",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.0.0/rom-linux.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.0.0/rom-linux.zip"
         },
@@ -200,7 +200,7 @@
           "model": "Y1",
           "type": "Type A",
           "size": 307246587,
-          "sha256": "ed383e1e0231c44bd91107b2cc1ef6150098cc3c3609a4e271ff573834668303",
+          "sha256": "3abb9fdd7d8d847d5a9dd636aa977e52ecd413b5f57ca3bd3c682221eee6492e",
           "url": "https://github.com/y1-community/better-y-mirror/releases/download/v1.0.0/rom-linux-arm64.zip",
           "fallback_url": "https://github.com/ryan-specter/better-y-mirror/releases/download/v1.0.0/rom-linux-arm64.zip"
         },
