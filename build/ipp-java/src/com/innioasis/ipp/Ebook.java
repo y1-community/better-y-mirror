@@ -2,49 +2,31 @@ package com.innioasis.ipp;
 
 import android.app.Activity;
 import android.content.Intent;
-import android.graphics.Color;
 import android.view.View;
-import android.widget.ImageView;
+import android.widget.ListAdapter;
 import android.widget.TextView;
 
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.innioasis.music.adapter.MainAdapter;
+import com.innioasis.music.adapter.MyBaseAdapter;
 import com.innioasis.y1.R;
 import com.innioasis.y1.base.BaseActivity;
-import com.innioasis.y1.theme.ThemeManager;
 import com.innioasis.y1_eBook.ui.main.MainActivity;
 
 /**
- * The e-book Library becomes a section of its own, reached by a row of the same name.
- *
- * One Activity, two modes
- * There is no second Activity: {@code MainActivity} is opened again with {@link #EXTRA}, and which
- * of its own views are shown decides what the screen is. That is the whole point — "don't touch
- * the functionality" is satisfied literally, because opening a book, the delete menu, the book
- * list and "Continue Reading" all stay exactly where stock put them.
- *
- *   menu mode     rows 0..2 = Continue Reading / Local file / Library, the list hidden
- *   library mode  the list alone, the three rows hidden
- *
- * Why the cursor never goes below fixedSum in library mode
- * Stock's {@code mark} counts the fixed rows first and the books after them ({@code fixedSum} = 2),
- * and its centre-press tests {@code mark == 0} and {@code mark == 1} before treating the mark as a
- * book. Rather than renumber any of that, library mode simply keeps the cursor at or above
- * {@code fixedSum}: the hidden rows keep their numbers, every book keeps the number stock gave it,
- * and the branch that opens a book is reached by the same arithmetic as before. So
- * {@link #minMark} is the floor, {@link #maxMark} the ceiling, and both are the only places that
- * know which mode this is.
- *
- * Raw (non-generic) types throughout: the bundled d8 crashes dexing generic Signature attrs.
+ * The e-book Library as a section of its own: the same {@code MainActivity} opened again with
+ * {@link #EXTRA}, so every stock function stays where it was. Menu mode shows a Music-menu list of
+ * marks 0..2 (Continue Reading / Local files / Library); library mode shows the list alone and
+ * keeps the cursor at or above {@code fixedSum}, so every book keeps stock's numbering. {@link #minMark} and
+ * {@link #maxMark} are the only places that know the mode.
  */
 public final class Ebook {
 
     private Ebook() { }
 
-    /** Intent flag: this MainActivity is the Library, not the menu. */
     public static final String EXTRA = "ipp_library";
 
-    /** The mark of the "Library" row in menu mode — the last of the three. */
     private static final int LIBRARY_ROW = 2;
 
     public static boolean library(Activity a) {
@@ -55,41 +37,38 @@ public final class Ebook {
         }
     }
 
-    // ------------------------------------------------------------------------- which screen it is
-
-    /**
-     * Injected into {@code MainActivity.initView}, just before stock's own {@code showItem()}:
-     * hide the half of the layout this mode is not, and in library mode put the cursor on the
-     * first book and the section's name in the state bar.
-     */
+    /** In {@code MainActivity.initView}, before stock's {@code showItem()}. */
     public static void setup(Activity a) {
         try {
             if (a == null) return;
             boolean lib = library(a);
             View cont = a.findViewById(R.id.continue_reading);
             View local = a.findViewById(R.id.local_files);
-            View row = a.findViewById(R.id.ipp_library_row);
+            View menu = a.findViewById(R.id.ipp_book_menu);
             View caption = a.findViewById(R.id.book_library);
             View divider = a.findViewById(R.id.ipp_book_divider);
             View list = a.findViewById(R.id.recyclerView);
 
-            show(cont, !lib);
-            show(local, !lib);
-            show(row, !lib);
+            // stock's two rows stay for the binding; the menu is the list of three
+            show(cont, false);
+            show(local, false);
+            show(menu, !lib);
             show(list, lib);
-            // The caption and its rule belonged to the list while both lived on one screen. In the
-            // menu they are replaced by the row; in the Library the state bar already says it.
+            // The row replaces them in the menu; in the Library the state bar says it.
             show(caption, false);
             show(divider, false);
 
             if (lib) {
                 ((BaseActivity) a).setStateBarLeftText(a.getString(R.string.book_library));
                 ((BaseActivity) a).setMark(LIBRARY_ROW);
-            } else {
-                label(row, a.getString(R.string.book_library));
+            } else if (menu instanceof RecyclerView) {
+                java.util.ArrayList items = new java.util.ArrayList();
+                items.add(a.getString(R.string.book_continue_read));
+                items.add(a.getString(R.string.book_local_file));
+                items.add(a.getString(R.string.book_library));
+                SongRows.set((RecyclerView) menu, new MainAdapter(a, items));
             }
         } catch (Throwable t) {
-            // a screen that cannot be re-arranged is still the stock screen
         }
     }
 
@@ -97,24 +76,11 @@ public final class Ebook {
         if (v != null) v.setVisibility(on ? View.VISIBLE : View.GONE);
     }
 
-    private static void label(View row, String text) {
-        if (row == null) return;
-        View tv = row.findViewById(R.id.tv_item);
-        if (tv instanceof TextView) ((TextView) tv).setText(text);
-    }
-
-    // ------------------------------------------------------------------------------- the cursor
-
-    /** Lowest mark this mode allows: the first book's own number in the Library, row 0 in the menu. */
     public static int minMark(Activity a, int fixedSum) {
         return library(a) ? fixedSum : 0;
     }
 
-    /**
-     * Highest mark this mode allows. In the menu it is the Library row, whatever the book list
-     * holds — the list is not on screen. In the Library it is stock's own last row, with a floor
-     * of {@code fixedSum} so an empty library cannot push the cursor onto a hidden row.
-     */
+    /** Floored at {@code fixedSum}, so an empty library cannot put the cursor on a hidden row. */
     public static int maxMark(Activity a, int listSize, int fixedSum) {
         if (!library(a)) return LIBRARY_ROW;
         int last = (listSize - 1) + fixedSum;
@@ -122,22 +88,26 @@ public final class Ebook {
     }
 
     /**
-     * The floor the long-press menu (remove / delete a book) needs: stock refuses it below
-     * {@code fixedSum}, i.e. on a fixed row. In the menu there is no book under the cursor at all,
-     * so nothing may open it.
+     * Round the end only once it has come to rest; meanwhile, and with going round off, the bar
+     * bounces against it ({@link Loop#wrap}).
      */
+    public static int belowFirst(Activity a, int min, int listSize, int fixedSum) {
+        return Loop.wrap() ? maxMark(a, listSize, fixedSum) : min;
+    }
+
+    /** -1 when the cursor does not go round, as in {@link #belowFirst}. */
+    public static int pastLast(Activity a, int fixedSum) {
+        return Loop.wrap() ? minMark(a, fixedSum) : -1;
+    }
+
+    /** The long-press book menu: never in menu mode, where no book is under the cursor. */
     public static int menuFloor(Activity a, int fixedSum) {
         return library(a) ? fixedSum : Integer.MAX_VALUE;
     }
 
-    // ------------------------------------------------------------------------------- the presses
-
     /**
-     * Injected at the top of the centre-press branch of {@code direction}. True = handled here.
-     *
-     * Two cases: the Library row of the menu opens this same Activity as the Library, and a press
-     * in an empty Library does nothing — stock would index the book list, which the floor above
-     * keeps the cursor pointing into even when there is nothing in it.
+     * Top of the centre-press branch; true = handled. The Library row opens the Library; a press
+     * in an empty Library does nothing (stock would index an empty list).
      */
     public static boolean confirm(Activity a, int mark) {
         try {
@@ -162,60 +132,62 @@ public final class Ebook {
         return ad == null ? 0 : ad.getItemCount();
     }
 
-    // ------------------------------------------------------------------------------- the painting
-
     /**
-     * Injected at the TOP of {@code showItem}, so stock reads the mark after this has settled it.
-     *
-     * Does the two things stock cannot know about: keeps the mark inside this mode's range (the
-     * delete path sets it to 1 or 2 outright, which is below the Library's floor when the last
-     * book goes), and paints the Library row, which is ours. Stock never touches that row, so the
-     * two cannot fight over it.
+     * Top of {@code showItem}: clamps the mark into this mode's range (stock's delete path sets it
+     * below the Library's floor) and, in the menu, moves the list's cursor to it.
      */
     public static void beforeShow(Activity a, int fixedSum) {
         try {
             if (a == null) return;
+            fixed = fixedSum;
             BaseActivity b = (BaseActivity) a;
             int mark = b.getMark();
             int lo = minMark(a, fixedSum);
             if (mark < lo) { b.setMark(lo); mark = lo; }
             if (library(a)) return;
-            paint(a.findViewById(R.id.ipp_library_row), mark == LIBRARY_ROW);
+            View v = a.findViewById(R.id.ipp_book_menu);
+            if (!(v instanceof RecyclerView)) return;
+            RecyclerView rv = (RecyclerView) v;
+            ListAdapter la = SongRows.adapter(rv);
+            if (!(la instanceof MyBaseAdapter)) return;
+            // the model's cursor follows the mark without a notify: three rows, a step or two
+            MyBaseAdapter m = (MyBaseAdapter) la;
+            while (m.getPosition() > mark && m.getPosition() > 0) m.toPrevious();
+            while (m.getPosition() < mark && m.getPosition() < m.getCount() - 1) m.toNext();
+            Wheel.follow(rv, mark, rv.getAdapter());
         } catch (Throwable t) {
-            // cosmetic
         }
     }
 
-    /**
-     * The look of one fixed row, selected or not — the same calls stock's own private
-     * {@code selItem} makes, which cannot be called from here (it takes a generated binding).
-     * Kept identical to it on purpose: the three rows are the same row three times over.
-     */
-    private static void paint(View row, boolean sel) {
-        if (row == null) return;
-        View tv = row.findViewById(R.id.tv_item);
-        View arrow = row.findViewById(R.id.iv_arrow);
-        View box = row.findViewById(R.id.layout);
-        if (box == null) box = row;
-        if (tv instanceof TextView) {
-            ThemeManager.INSTANCE.itemSetTextColor((TextView) tv,
-                    sel ? Color.parseColor("#3CFFDE") : -1, sel);
-        }
-        if (arrow instanceof ImageView) {
-            arrow.setVisibility(sel ? View.VISIBLE : View.GONE);
-            if (sel) ThemeManager.INSTANCE.itemSetRightArrow((ImageView) arrow, R.mipmap.right_arrow);
-        }
-        ThemeManager.INSTANCE.itemSetBackground(box, sel ? R.drawable.bg_fm_menu_sel : 0, sel);
+    /** {@code fixedSum} as {@code showItem} last passed it: the mark of the Library's first book. */
+    private static int fixed = 2;
+
+    static int firstMark() {
+        return fixed;
     }
 
     /**
-     * The size and the date under a file's name in Local files.
-     *
-     * Stock paints the name through ThemeManager and leaves those two at {@code @color/white},
-     * which on a light theme is a name in the theme's colour with two invisible lines beneath it.
-     * They take whatever the name became, cursor row included — called from both halves of
-     * {@code SearchActivity.selItem}, after it has painted the name.
+     * In place of stock's scroll after a wheel step in the Library and Local files: the list
+     * follows the cursor as every other list does ({@code Wheel.follow}). {@code pos} is a row.
      */
+    public static void step(RecyclerView rv, int pos) {
+        if (rv == null || !rv.isShown() || pos < 0) return;
+        Wheel.follow(rv, pos, rv.getAdapter());
+    }
+
+    /** {@link #librarySub} for a row the travelling bar has just recoloured. */
+    static void librarySub(View row) {
+        View p = row == null ? null : row.findViewById(R.id.progress);
+        View t = row == null ? null : row.findViewById(R.id.time);
+        if (!(p instanceof TextView) || !(p.getParent() instanceof android.view.ViewGroup)) return;
+        android.view.ViewGroup line = (android.view.ViewGroup) p.getParent();
+        for (int i = 0; i < line.getChildCount(); i++) {
+            View v = line.getChildAt(i);
+            if (v instanceof TextView && v != p && v != t) Rows.subLine((TextView) p, (TextView) v);
+        }
+    }
+
+    /** Size and date under a Local files row take the name's colour (stock left them white). */
     public static void searchSub(com.innioasis.y1.databinding.ItemBookSearchBinding b) {
         if (b == null) return;
         Rows.subLine(b.name, b.size);
@@ -223,22 +195,86 @@ public final class Ebook {
     }
 
     /**
-     * The mod's own folder on the card is not a shelf, and Local files must not list it: that
-     * listing takes every {@code .txt} on the card, and it has a per-row menu that DELETES the
-     * file — {@code comma_artists.txt} above all, whose loss silently drops every exception the
-     * artist splitting was taught.
-     *
-     * Asked from the one predicate the walk filters everything through, which runs for folders
-     * too: refusing it there is what keeps the walk from descending into it at all. Matched on the
-     * full path, so a folder someone else calls better-Y deeper on the card is still their own.
+     * The "Progress" and "Last read time" captions of a Library row take their values' colour
+     * (stock painted the values and left the captions white). The captions have no id: they are
+     * the other children of the values' own line.
+     */
+    public static void librarySub(com.innioasis.y1.databinding.ItemBookLibraryBinding b) {
+        if (b == null || b.progress == null) return;
+        android.view.ViewParent p = b.progress.getParent();
+        if (!(p instanceof android.view.ViewGroup)) return;
+        android.view.ViewGroup line = (android.view.ViewGroup) p;
+        for (int i = 0; i < line.getChildCount(); i++) {
+            android.view.View v = line.getChildAt(i);
+            if (v instanceof TextView && v != b.progress && v != b.time) {
+                Rows.subLine(b.progress, (TextView) v);
+            }
+        }
+    }
+
+    /**
+     * Local files never lists our folder: its row menu DELETES files, and losing
+     * {@code comma_artists.txt} silently drops the artist-splitting exceptions. Full path match.
      */
     public static boolean hidden(java.io.File f) {
         try {
             if (f == null) return false;
-            java.io.File dir = Panel.card();
+            walkNodes++;
+            // the name first: both full paths for every node of the card cost seconds on a big one
+            java.io.File dir = ours;
+            if (dir == null) ours = dir = Panel.card();
+            if (!f.getName().equals(dir.getName())) return false;
             return dir != null && f.getAbsolutePath().equals(dir.getAbsolutePath());
         } catch (Throwable t) {
-            return false;   // an unanswerable path is not ours to hide
+            return false;
         }
+    }
+
+    private static java.io.File ours;
+
+    // the Local files walk, one at a time on its IO thread: what it cost goes to the log
+    private static long walkT0, walkListMs;
+    private static int walkDirs, walkNodes;
+
+    public static void walkStart() {
+        walkT0 = android.os.SystemClock.uptimeMillis();
+        walkListMs = 0;
+        walkDirs = 0;
+        walkNodes = 0;
+    }
+
+    /** {@code listFiles} of the walk, timed apart from the looks at each child. */
+    public static java.io.File[] list(java.io.File dir) {
+        long t0 = android.os.SystemClock.uptimeMillis();
+        java.io.File[] r = dir.listFiles();
+        walkListMs += android.os.SystemClock.uptimeMillis() - t0;
+        walkDirs++;
+        return r;
+    }
+
+    private static java.io.File lastNode;
+    private static boolean lastDir;
+
+    /**
+     * {@code isDirectory} for the walk, which asks it twice per child (the filter, then the loop)
+     * one right after the other: the second answer is the first one's. A name with a media, picture
+     * or text extension is a file without asking the card: a folder named like that is not walked.
+     */
+    public static boolean dir(java.io.File f) {
+        if (f != lastNode) {
+            String name = f.getName();
+            int dot = name.lastIndexOf('.');
+            String ext = dot < 0 ? "" : name.substring(dot + 1).toLowerCase(java.util.Locale.ROOT);
+            lastDir = !Scan.fileExt(ext) && f.isDirectory();
+            lastNode = f;
+        }
+        return lastDir;
+    }
+
+    public static void walkEnd(java.util.List found) {
+        lastNode = null;
+        Diag.note("local files: " + (found == null ? 0 : found.size()) + " found, " + walkDirs
+                + " dirs, " + walkNodes + " nodes, " + (android.os.SystemClock.uptimeMillis() - walkT0)
+                + " ms, listFiles " + walkListMs + " ms");
     }
 }

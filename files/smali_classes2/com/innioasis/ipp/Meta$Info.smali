@@ -16,6 +16,8 @@
 
 .field public art:[B
 
+.field public artNs:J
+
 .field public artist:Ljava/lang/String;
 
 .field public date:Ljava/lang/String;
@@ -24,15 +26,27 @@
 
 .field public genre:Ljava/lang/String;
 
+.field lyrics:Ljava/lang/String;
+
+.field lyricsRank:I
+
+.field public ok:Z
+
+.field public openNs:J
+
+.field public ours:Z
+
 .field public title:Ljava/lang/String;
 
 .field public track:Ljava/lang/String;
+
+.field wantLyrics:Z
 
 .field public year:Ljava/lang/String;
 
 .method public constructor <init>()V
   .registers 1
-  .line 40
+  .line 26
     invoke-direct { p0 }, Ljava/lang/Object;-><init>()V
     return-void
 .end method

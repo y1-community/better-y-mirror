@@ -18,7 +18,12 @@ import android.graphics.RectF;
 import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.graphics.drawable.GradientDrawable;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.SystemClock;
+import android.text.SpannableString;
+import android.text.Spanned;
+import android.text.style.RelativeSizeSpan;
 import android.view.Gravity;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
@@ -38,26 +43,52 @@ import androidx.constraintlayout.widget.ConstraintLayout;
 
 import com.innioasis.y1.R;
 import com.innioasis.y1.theme.ThemeManager;
+import com.innioasis.y1.utils.LoadingDialog;
+
+import java.lang.ref.WeakReference;
+import java.util.WeakHashMap;
 
 /**
- * The progress window ({@code LoadingDialog}: Update library, Cache library, clearing the cache,
- * the backup) in the theme's dialog colours — the same {@code dialogBackgroundColor} /
- * {@code dialogTextColor} the Yes/No dialogs take. Its layout has them written in (a white box,
- * #102162 text), and those are also the fallbacks here, so with no theme nothing changes.
- *
- * The spinner is tinted only when the theme names a text colour: its own blue is part of the stock
- * look, and a tint the theme did not ask for would replace it for no reason. It must not be tinted
- * with a plain colour filter: {@code loading.png} fades from navy to white at FULL alpha, so a
- * flat SRC_IN/ATOP fills the whole ring and the rotation stops being visible. {@link #FADE} turns
- * that darkness into alpha instead — the ring comes out in the theme's colour fading to nothing,
- * which is how the platform spinner on the USB screen looks.
- *
- * {@link #progress} dresses the OTHER progress window, the platform {@code ProgressDialog}; both
- * turn the same {@link Spin}.
+ * The progress windows in the theme's dialog colours: {@code LoadingDialog} and the platform
+ * {@code ProgressDialog} ({@link #progress}), both turning the same {@link Spin}. The ring is tinted
+ * only when the theme names a text colour, and never with a flat filter: {@code loading.png} fades
+ * navy to white at FULL alpha, so SRC_IN fills the ring and the rotation vanishes; {@link #fade}
+ * turns darkness into alpha instead.
  */
 public final class Loading {
 
     private Loading() { }
+
+    /** Every progress window that went through here; weak, so a closed one goes with its screen. */
+    private static final java.util.WeakHashMap SEEN = new java.util.WeakHashMap();
+
+    private static void seen(Dialog d) {
+        if (d == null) return;
+        synchronized (SEEN) {
+            SEEN.put(d, Boolean.TRUE);
+        }
+    }
+
+    /**
+     * A progress window is on screen: loading, a scan, the cache pass. Main thread. A window put
+     * away by {@code hide()} still answers {@code isShowing()}, its decor GONE: counted, it kept
+     * the screen from ever going out.
+     */
+    public static boolean up() {
+        synchronized (SEEN) {
+            java.util.Iterator it = SEEN.keySet().iterator();
+            while (it.hasNext()) {
+                Object o = it.next();
+                if (!(o instanceof Dialog) || !((Dialog) o).isShowing()) continue;
+                Window w = ((Dialog) o).getWindow();
+                if (w != null && w.peekDecorView() != null
+                        && w.peekDecorView().getVisibility() == View.VISIBLE) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 
     /** {@code @drawable/loading_dialog}. */
     private static final int BOX = 0xFFFFFFFF;
@@ -66,14 +97,15 @@ public final class Loading {
     /** {@code dialog_loading.xml}. */
     private static final int TEXT = 0xFF102162;
 
-    /** Alpha 0: a real theme colour can never be this, so it answers "the theme names none". */
+    /** Alpha 0, never a real theme colour: the answer means "the theme names none". */
     private static final int PROBE = 0x00FEEDBE;
 
-    /** What a window holding the ring comes and goes with: the dialog's own fade, no scale. */
+    /** Fade only, no scale — see {@link Spin}. */
     private static final int FADE_STYLE = R.style.ipp_Fade;
 
     /** From {@code LoadingDialog.onCreate}, right after {@code setContentView}. */
     public static void paint(Dialog d, View root) {
+        seen(d);
         if (root == null) return;
         try {
             ThemeManager tm = ThemeManager.INSTANCE;
@@ -87,35 +119,190 @@ public final class Loading {
             text(root, R.id.content, text);
             text(root, R.id.tip, text);
             View img = root.findViewById(R.id.loading_img);
-            if (spin(img, themed, 0)) {
+            View c = root.findViewById(R.id.content);
+            if (counts(d)) {
+                // the number is the window: no ring, the text takes its place at the top
+                if (img != null) img.setVisibility(View.GONE);
+                // content is tied to the bottom only, so a margin of its own would be ignored
+                root.setPadding(root.getPaddingLeft(),
+                        (int) (TOP_DIP * root.getResources().getDisplayMetrics().density),
+                        root.getPaddingRight(), root.getPaddingBottom());
+                // the tip line has no margin of its own and would sit on the box's edge
+                View tip = root.findViewById(R.id.tip);
+                if (tip != null) {
+                    int side = (int) (SIDE_DIP * root.getResources().getDisplayMetrics().density);
+                    tip.setPadding(side, tip.getPaddingTop(), side, tip.getPaddingBottom());
+                }
+                if (c instanceof TextView) steady((TextView) c);
+            } else if (spin(img, themed, 0)) {
                 Window w = d == null ? null : d.getWindow();
                 if (w != null) w.setWindowAnimations(FADE_STYLE);
             } else if (themed != PROBE && img instanceof ImageView) {
                 ((ImageView) img).setColorFilter(fade(themed));
             }
         } catch (Throwable t) {
-            // a stock-coloured progress window is still a progress window
+        }
+    }
+
+    // ---- progress text ----------------------------------------------------------------------
+
+    /** The progress line over the title. */
+    public static String percent(String title, int pct) {
+        return pct + "%\n" + title;
+    }
+
+    /** Re-text a showing window, its width held. */
+    public static void show(LoadingDialog d, String text) {
+        if (d == null) return;
+        try {
+            d.show(text);
+            View v = d.findViewById(R.id.content);
+            if (v instanceof TextView) steady((TextView) v);
+        } catch (Throwable t) {
         }
     }
 
     /**
-     * How much alpha one unit of darkness is worth. The ring's darkest pixel (#102162) has a
-     * luminance of about 32, so without the gain its head would stop at 87% opacity.
+     * Before {@code show()}: a window that counts — no ring, the number large over a smaller title,
+     * and the screen kept on while it is up (the flag goes with the window).
      */
+    public static void counter(Dialog d) {
+        if (d == null) return;
+        seen(d);
+        synchronized (COUNTERS) {
+            COUNTERS.put(d, Boolean.TRUE);
+        }
+        try {
+            Window w = d.getWindow();
+            if (w != null) w.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        } catch (Throwable t) {
+        }
+    }
+
+    private static boolean counts(Dialog d) {
+        synchronized (COUNTERS) {
+            return d != null && COUNTERS.containsKey(d);
+        }
+    }
+
+    private static final WeakHashMap COUNTERS = new WeakHashMap();
+
+    /** The number against the layout's 30sp, and the title under it. */
+    private static final float BIG = 2.2f;
+    private static final float SMALL = 0.7f;
+    private static final int TOP_DIP = 16;
+    private static final int SIDE_DIP = 14;
+
+    /**
+     * A text whose first line is the progress: that line large, the rest small, and the width fixed
+     * at its widest form ("100%", or the count, which only grows), so the window does not jump with
+     * each digit. Only ever widened.
+     */
+    private static void steady(TextView tv) {
+        CharSequence cs = tv.getText();
+        if (cs == null) return;
+        String s = cs.toString();
+        int nl = s.indexOf('\n');
+        String head = nl < 0 ? s : s.substring(0, nl);
+        if (head.length() == 0 || !Character.isDigit(head.charAt(0))) return;
+        if (!(cs instanceof Spanned)) {
+            SpannableString sp = new SpannableString(s);
+            int ex = Spanned.SPAN_EXCLUSIVE_EXCLUSIVE;
+            sp.setSpan(new RelativeSizeSpan(BIG), 0, head.length(), ex);
+            if (nl >= 0) sp.setSpan(new RelativeSizeSpan(SMALL), nl + 1, s.length(), ex);
+            tv.setText(sp);
+        }
+        Paint p = new Paint(tv.getPaint());
+        float size = p.getTextSize();
+        p.setTextSize(size * BIG);
+        float w = Math.max(p.measureText(head), p.measureText(FULL));
+        p.setTextSize(size * SMALL);
+        int from = nl + 1;
+        while (nl >= 0 && from <= s.length()) {
+            int end = s.indexOf('\n', from);
+            String line = end < 0 ? s.substring(from) : s.substring(from, end);
+            w = Math.max(w, p.measureText(line));
+            if (end < 0) break;
+            from = end + 1;
+        }
+        int px = (int) Math.ceil(w) + SLACK + tv.getPaddingLeft() + tv.getPaddingRight();
+        int max = tv.getResources().getDisplayMetrics().widthPixels * 9 / 10;
+        if (px > max) px = max;
+        Object had = tv.getTag(R.id.content);
+        if (had instanceof Integer && px <= ((Integer) had).intValue()) return;
+        tv.setTag(R.id.content, Integer.valueOf(px));
+        tv.setWidth(px);
+    }
+
+    private static final String FULL = "100%";
+    /** A span's measure and the paint's differ by a pixel or two; a wrap would add a line. */
+    private static final int SLACK = 4;
+
+    // ---- the stock scan's window ------------------------------------------------------------
+
+    private static volatile WeakReference scanDialog;
+    private static String scanTitle;
+
+    /** In place of the stock scan window's {@code show()}: kept awake and given the progress line. */
+    public static void scan(LoadingDialog d) {
+        seen(d);
+        if (d == null) return;
+        counter(d);
+        d.show();
+        try {
+            scanTitle = d.getContext().getString(R.string.scanning_files);
+            scanDialog = new WeakReference(d);
+            show(d, percent(scanTitle, 0));
+        } catch (Throwable t) {
+        }
+    }
+
+    /** From the scan's thread: {@code seen} music files met, of {@code known} in the table before. */
+    /** Files found by a scan of an empty table, which has no total to measure against. */
+    static void scanned(int seen) {
+        scanLine(seen + "\n" + scanTitle);
+    }
+
+    static void scannedPercent(int pct) {
+        scanLine(percent(scanTitle, pct));
+    }
+
+    private static void scanLine(String line) {
+        WeakReference r = scanDialog;
+        LoadingDialog d = r == null ? null : (LoadingDialog) r.get();
+        if (d == null) return;
+        MAIN.post(new ScanText(d, line));
+    }
+
+    private static final Handler MAIN = new Handler(Looper.getMainLooper());
+
+    private static final class ScanText implements Runnable {
+        private final LoadingDialog d;
+        private final String text;
+
+        ScanText(LoadingDialog d, String text) {
+            this.d = d;
+            this.text = text;
+        }
+
+        public void run() {
+            if (!d.isShowing()) return;
+            show(d, text);
+        }
+    }
+
+    /** Alpha per unit of darkness: without the gain the ring's head stops at 87%. */
     private static final float FADE = 1.15f;
 
-    // ------------------------------------------------ the PLATFORM's progress window (wallpapers)
-
-    /** A rule under a dialog's title is a bare View a pixel or two high; nothing else here is. */
+    /** The rule under a dialog's title is a bare View this thin; nothing else here is. */
     private static final int RULE_MAX_DIP = 4;
 
     /**
-     * The platform {@code ProgressDialog} — the app's own window, so it can be dressed: title
-     * centred, message dropped (it repeated the title), the app's {@link Spin ring}, the theme's
-     * dialog colours when it names them. The parts are found by WALKING the window: an
-     * AlertDialog's ids are {@code com.android.internal.R.id.*}.
+     * The platform {@code ProgressDialog}: title centred, message dropped (it repeated the title),
+     * our ring. Parts are found by walking the window — its ids are internal.
      */
     public static void progress(ProgressDialog d) {
+        seen(d);
         if (d == null) return;
         try {
             d.setMessage("");
@@ -128,8 +315,7 @@ public final class Loading {
             boolean boxed = bg != PROBE;
             float density = decor.getResources().getDisplayMetrics().density;
             if (boxed) {
-                // The window's padding lives in its nine-patch background: read it off the
-                // drawable being replaced and put it back, or the title touches the edge.
+                // The padding lives in the nine-patch being replaced: carried over.
                 Rect pad = new Rect();
                 Drawable had = decor.getBackground();
                 if (had != null) had.getPadding(pad);
@@ -139,8 +325,7 @@ public final class Loading {
                 w.setBackgroundDrawable(box);
                 decor.setPadding(pad.left, pad.top, pad.right, pad.bottom);
             }
-            // From the decor's CHILDREN: the walk clears every group's background, and the
-            // decor's own is the box just given it.
+            // From the CHILDREN: the walk clears backgrounds, and the decor's is the new box.
             int fg = tm.dialogTextColor(PROBE);
             int rule = (int) (RULE_MAX_DIP * density);
             if (decor instanceof ViewGroup) {
@@ -152,31 +337,77 @@ public final class Loading {
             // Before the window's first draw, which is when its enter animation is chosen.
             if (holdsSpin(decor)) w.setWindowAnimations(FADE_STYLE);
         } catch (Throwable t) {
-            // the platform's own window is still a progress window
         }
     }
 
+    /** How long Photos' loads stay without a visible window. */
+    static final int LATE_MS = 800;
+
     /**
-     * A progress window raised but not seen (Photos opening a folder or a picture). It must stay
-     * raised: it holds the keys while the load runs, and a second load started over the first
-     * lands the wrong folder's list. Only its look goes.
+     * Photos' progress window: dressed as {@link #progress}, but kept invisible and shown only if
+     * the load is still running after {@link #LATE_MS}. Up all along, it holds the keys during the
+     * load, and a second load over the first would land the wrong folder's list.
      */
-    public static void hidden(ProgressDialog d) {
+    public static void late(ProgressDialog d) {
+        progress(d);
         if (d == null) return;
         try {
             Window w = d.getWindow();
             if (w == null) return;
-            // Before the window's first draw, which is when its enter animation is chosen.
+            // Before the first draw, when the enter animation is chosen.
             w.setWindowAnimations(0);
+            View decor = w.getDecorView();
+            boolean dimmed = (w.getAttributes().flags & WindowManager.LayoutParams.FLAG_DIM_BEHIND) != 0;
+            Drawable bg = decor.getBackground();
             w.clearFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             w.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
-            View decor = w.getDecorView();
-            if (decor instanceof ViewGroup) {
-                ViewGroup g = (ViewGroup) decor;
-                for (int i = 0; i < g.getChildCount(); i++) g.getChildAt(i).setVisibility(View.INVISIBLE);
-            }
+            showChildren(decor, false);
+            decor.postDelayed(new Reveal(d, bg, dimmed), LATE_MS);
         } catch (Throwable t) {
-            // a window that shows is still a window that holds the keys
+        }
+    }
+
+    private static void showChildren(View decor, boolean on) {
+        if (!(decor instanceof ViewGroup)) return;
+        ViewGroup g = (ViewGroup) decor;
+        surfaces(decor, on);
+        for (int i = 0; i < g.getChildCount(); i++) {
+            View c = g.getChildAt(i);
+            c.setVisibility(on ? View.VISIBLE : View.INVISIBLE);
+        }
+    }
+
+    /** A SurfaceView keeps its surface on screen under an invisible parent: hidden by itself. */
+    private static void surfaces(View v, boolean on) {
+        if (v instanceof SurfaceView) {
+            v.setVisibility(on ? View.VISIBLE : View.INVISIBLE);
+        } else if (v instanceof ViewGroup) {
+            ViewGroup g = (ViewGroup) v;
+            for (int i = 0; i < g.getChildCount(); i++) surfaces(g.getChildAt(i), on);
+        }
+    }
+
+    static final class Reveal implements Runnable {
+        private final ProgressDialog d;
+        private final Drawable bg;
+        private final boolean dimmed;
+
+        Reveal(ProgressDialog d, Drawable bg, boolean dimmed) {
+            this.d = d;
+            this.bg = bg;
+            this.dimmed = dimmed;
+        }
+
+        public void run() {
+            try {
+                if (!d.isShowing()) return;
+                Window w = d.getWindow();
+                if (w == null) return;
+                if (bg != null) w.setBackgroundDrawable(bg);
+                if (dimmed) w.addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
+                showChildren(w.getDecorView(), true);
+            } catch (Throwable t) {
+            }
         }
     }
 
@@ -194,37 +425,32 @@ public final class Loading {
             return;
         }
         if (v instanceof ProgressBar) {
-            // The line was laid out to hold circle and message side by side, so with the
-            // message gone the circle stays where it left it unless the row is told to centre.
+            // With the message gone the circle must be centred explicitly.
             if (!spin(v, color, (int) (PLATFORM_DIP * v.getResources().getDisplayMetrics().density))) {
                 centre(v);
             }
             return;
         }
         if (v instanceof ViewGroup) {
-            // Each panel of an AlertDialog carries a nine-patch of its own — a white box INSIDE
-            // the one the window was just given, so the panels give theirs up. Padding survives:
-            // a view keeps what a background gave it when that background goes.
+            // Each panel carries its own white nine-patch inside the box; its padding survives.
             if (boxed) v.setBackgroundDrawable(null);
             ViewGroup g = (ViewGroup) v;
             for (int i = 0; i < g.getChildCount(); i++) dress(g.getChildAt(i), color, ruleMax, boxed);
             return;
         }
         if (themed) {
-            // The rule under the title, in the platform's own accent. Height from the layout
-            // params, not the view: this runs before the window has been measured.
+            // The rule under the title. Height from the params: nothing is measured yet.
             ViewGroup.LayoutParams lp = v.getLayoutParams();
             if (lp != null && lp.height > 0 && lp.height <= ruleMax) v.setBackgroundColor(color);
         }
     }
 
-    /** The platform circle's size ({@code Widget.ProgressBar}), which the ring takes over. */
+    /** {@code Widget.ProgressBar}'s size. */
     private static final int PLATFORM_DIP = 48;
 
     /**
-     * Puts a {@link Spin} where {@code stand} is and hides the stand; false leaves it untouched.
-     * The ImageView of {@code dialog_loading.xml} stays (INVISIBLE, not replaced): {@code
-     * LoadingDialog.onStart} casts it by id. The platform ProgressBar goes GONE.
+     * A {@link Spin} in place of {@code stand}. The ImageView of {@code dialog_loading.xml} stays,
+     * INVISIBLE: {@code LoadingDialog.onStart} casts it by id.
      */
     private static boolean spin(View stand, int color, int sidePx) {
         ViewParent vp = stand == null ? null : stand.getParent();
@@ -324,7 +550,6 @@ public final class Loading {
             try {
                 t.join(500);
             } catch (InterruptedException e) {
-                // the loop reads the flag before every frame
             }
         }
 

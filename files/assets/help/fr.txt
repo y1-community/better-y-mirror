@@ -14,9 +14,6 @@
 
 [[tools]] Outils
 
-[reboot] Redémarrer
-Redémarre l'appareil.
-
 [cache] Mettre la bibliothèque en cache
 Met la bibliothèque en cache.
 
@@ -30,32 +27,80 @@ Enregistre les réglages, les mentions j’aime, les listes de lecture, les sign
 
 Les cinq sauvegardes les plus récentes sont conservées. Après Charger, le lecteur redémarre.
 
+[m3u_import] Importer des listes M3U
+Affiche les fichiers .m3u et .m3u8 du dossier /Playlists/ à la racine de la carte mémoire ; chaque fichier coché devient une liste de lecture, les morceaux dans l’ordre du fichier. Un morceau est cherché par son chemin, ou par son nom de fichier quand le chemin ne mène nulle part.
+
+Si une liste de ce nom existe déjà, vous pouvez la remplacer, ajouter les morceaux manquants ou en créer une nouvelle. Un fichier exporté depuis {app:favorites} retourne dans {app:favorites}.
+
+À la fin, l’écran affiche le nom de fichier de chaque morceau introuvable dans la bibliothèque.
+
+Pour exporter, maintenez le bouton du haut sur une liste et choisissez « Export. m3u ».
+
+Pour que la liste exportée s’ouvre depuis n’importe quel endroit de l’ordinateur, il faut indiquer le chemin de la bibliothèque musicale sur votre ordinateur (par exemple C:\Music). Lors de l’import, le lecteur propose un chemin. Vous pouvez le modifier directement sur le lecteur ou plus tard dans le fichier /better-Y/music_path.txt. L’arborescence des dossiers doit être identique sur le lecteur et sur l’ordinateur.
+
 [log] Enregistrer le journal de diagnostic
 Enregistre un rapport de diagnostic dans le dossier /better-Y/logs/ de la carte mémoire, à joindre à un rapport de bogue.
 
+[menu_tip]
+* Fermer
+* Ne plus afficher
+Vous pouvez maintenir le bouton du haut enfoncé sur chaque élément du menu pour en savoir plus sur son fonctionnement.
+
+[themes_tip]
+* Fermer
+* Ne plus afficher
+Vous pouvez enregistrer les réglages actuels dans le fichier better-Y.json, qui apparaîtra dans le dossier du thème sélectionné.
+
+Pour cela, maintenez le bouton du haut enfoncé sur le thème voulu et choisissez "Enreg. config".
+---
+Les réglages suivants sont enregistrés :
+
+En lecture : style (sauf "incliner la pochette").
+Menu : style, style et couleur du texte de la barre d'état.
+Économiseur d'écran : style (sauf "luminosité").
+Sonorité des touches : son.
+---
+Pour ajouter un fond d'économiseur d'écran (screensaver.*), un fond d'écran USB (usb.*) ou une icône better-Y (better-Y.*), placez des images portant les noms de fichier correspondants dans le dossier du thème.
+
+Formats pris en charge : *.png, *.jpg et *.jpeg.
+---
+Vous pouvez aussi utiliser votre propre fichier de son pour la molette.
+Pour cela, placez un fichier "key-tone.*" dans le dossier du thème. Ensuite, allez dans Paramètres - Sonorité des touches, choisissez Son - Thème et enregistrez la configuration du thème.
+
+Formats pris en charge : *.mp3, *.ogg et *.wav.
+
 [[player]] En lecture
+
+[np_style] Style
 
 [icon_tint] Couleur des icônes
 * Clair
 * Sombre
 * Couleur du thème
-Définit la couleur des boutons interactifs du lecteur.
 
 [text_tint] Couleur du texte
 * Clair
 * Sombre
 * Couleur du thème
-Définit la couleur des lignes de texte et des repères de temps du lecteur.
 
 [lyrics_tint] Couleur des paroles
 * Clair
 * Sombre
 * Couleur du thème
-Définit la couleur des paroles dans le lecteur.
+
+[box_tint] Couleur des cadres
+* Clair
+* Sombre
+* Couleur du thème
+* Désactivé
 
 [cover_tilt] Incliner la pochette
-@img cover_tilt_on.png {On}
-@img cover_tilt_off.png {Off}
+
+[np_blank]
+* Titre
+* Artiste
+* Album
+* Paroles
 
 [top_hold] Appui long bouton haut (Musique)
 * Paroles
@@ -82,6 +127,8 @@ devient
 Ne s'applique qu'à la ligne d'artiste du lecteur.
 
 Les artistes masqués peuvent être déplacés dans le titre en activant « {row:feat_in_title} ».
+
+L'activer désactive « {row:player_album_artist} ».
 @img first_artist_only_off.png {Off}
 @img first_artist_only_on.png {On}
 
@@ -99,6 +146,40 @@ Ne s'applique qu'à la ligne d'artiste du lecteur.
 @img first_artist_only_on.png {On} + {Off}
 @img feat_in_title_on.png {On} + {On}
 
+[player_album_artist] Afficher l'artiste de l'album au lieu des artistes
+Affiche dans la ligne de l'artiste du lecteur l'artiste de l'album (Album Artist) au lieu des artistes du morceau. Si l'album n'a pas d'Album Artist, le premier artiste du morceau est affiché. Par exemple, sur un album de « Tree » :
+
+« Tree, Shelf Nunny, Lena Kuhn — People »
+devient
+« Tree — People »
+
+Ne s'applique qu'à la ligne de l'artiste du lecteur.
+
+L'activer désactive « {row:first_artist_only} ».
+@img first_artist_only_off.png {Off}
+@img first_artist_only_on.png {On}
+
+[various_artist] Remplacer « Various Artists » par un artiste
+Si l'Album Artist est « Various » ou « Various Artists », le premier artiste du morceau est affiché à sa place. Par exemple, sur une compilation :
+
+« Various Artists — Lose Yourself »
+devient
+« Eminem — Lose Yourself »
+
+[aa_feat_in_title] Déplacer les artistes invités dans le titre
+Déplace les artistes du morceau que la ligne de l'artiste n'affiche pas dans le titre du morceau, après un « feat. ». Par exemple, sur un album de « Tree » :
+
+« Tree, Shelf Nunny, Lena Kuhn — People »
+devient, avec ce réglage désactivé,
+« Tree — People »
+
+et, avec ce réglage activé,
+« Tree — People (feat. Shelf Nunny, Lena Kuhn) »
+
+Rien n'est ajouté si le titre nomme déjà l'un d'eux, ou si la ligne de l'artiste affiche « Various » ou « Various Artists ».
+@img first_artist_only_on.png {Off}
+@img feat_in_title_on.png {On}
+
 [artist_album_scroll] Défilement des artistes/albums longs
 * Désactivé
 * Artistes
@@ -109,6 +190,8 @@ Active le défilement du texte long dans les lignes sélectionnées.
 Les titres longs des morceaux défilent toujours, quel que soit ce réglage.
 
 [[menu]] Menu
+
+[menu_look] Style
 
 [alpha_scroll] Défilement alphabétique rapide
 Démarre après un certain nombre de crans de la molette et parcourt la liste par première lettre.
@@ -132,12 +215,106 @@ La sélection passe en mode manuel dès que la molette est utilisée. Une fois l
 [follow_idle if follow_playing] Délai de retour (secondes)
 Détermine au bout de combien de secondes, après la dernière rotation de la molette, la sélection revient sur le morceau en cours de lecture.
 
-[fixed_menu_pad] Marges de menu corrigées
-Corrige les marges du menu principal et des réglages.
+[loop_scroll] Listes en boucle
+Arrivée à la fin ou au début d'une liste, la sélection repart du côté opposé. Fonctionne dans toutes les listes, menus, galeries et fenêtres de dialogue.
 
-À désactiver avec les thèmes dont les fonds sont dessinés pour les marges d'origine — le thème fourni Melody Munchkin, par exemple.
-@img fixed_menu_pad_off.png {Off}
-@img fixed_menu_pad_on.png {On}
+[animations] Activer les animations
+
+[anim_nav] Navigation
+Les écrans du menu glissent l'un dans l'autre, comme sur l'iPod : vers l'intérieur de droite à gauche, en arrière de gauche à droite. Une liste à côté d'une image glisse dans sa moitié de l'écran ; une liste plein écran arrive par la droite et pousse la moitié dehors.
+
+[anim_scroll] Défilement
+
+[menu_style] Style
+* Par défaut
+* Équilibré
+* Simple
+
+[fixed_menu_pad] Marges
+* Par défaut
+* Sans marges
+
+[preview_text] Couleur du texte des aperçus
+* Clair
+* Sombre
+* Couleur du thème
+
+[main_menu] Menu principal
+
+[mm_now] À l'écoute
+
+[mm_music] Musique
+
+[mm_coverflow] Cover Flow
+
+[mm_songs] Tous
+
+[mm_playlists] Listes de lecture
+
+[mm_artists] Artistes
+
+[mm_albums] Albums
+
+[mm_genres] Genres
+
+[mm_folders] Dossier
+
+[mm_search] Recherche
+
+[mm_videos] Vidéo
+
+[mm_video_all] Toutes les vidéos
+
+[mm_video_playlist] Listes de lecture
+
+[mm_video_folders] Dossier
+
+[mm_video_search] Recherche
+
+[mm_audiobooks] Livres audio
+
+[mm_book_all] Tous audios
+
+[mm_book_artists] Artistes
+
+[mm_book_albums] Albums
+
+[mm_book_folders] Dossier
+
+[mm_bookmarks] Signets
+
+[mm_ebook] Livres électroniques
+
+[mm_photos] Photos
+
+[mm_fm] Radio FM
+
+[mm_bluetooth] Bluetooth
+
+[album_artists] Artistes d'album
+Un album sans tag « Album Artist » prend le premier artiste du tag « Artist » qui revient le plus souvent sur l'album.
+
+[status_bar] Barre d'état
+
+[bar_text] Couleur du texte de la barre d'état
+* Clair
+* Sombre
+* Couleur du thème
+Définit la couleur du titre du menu et du pourcentage de batterie.
+
+[bar_icons] Visibilité des icônes
+* Titre du menu
+* Lecture
+* Écouteurs
+* Bluetooth
+* Batterie
+* Pourcentage de batterie
+Choisit les icônes affichées dans la barre d'état.
+
+[bar_style] Style
+* Par défaut
+* Centré
+Centré place les icônes au bord gauche et le titre de la section au milieu ; la batterie reste à droite.
 
 [[metadata]] Métadonnées
 
@@ -148,8 +325,11 @@ Affiche les titres des morceaux depuis les métadonnées au lieu du nom de fichi
 Affiche les titres des livres audio depuis les métadonnées au lieu du nom de fichier.
 
 [album_year] Année de sortie dans les albums
-Affiche l'année de sortie de l'album dans son nom. Par exemple :
+Affiche l'année de sortie de l'album dans son nom :
 « The Eminem Show (2002) »
+
+Si un album contient des morceaux sortis à des années différentes, la première et la dernière année sont indiquées, séparées par un tiret :
+« Dirt (1992 - 1993) »
 
 [track_numbers] Numéros de piste des métadonnées dans les albums
 Affiche les numéros de piste des métadonnées au sein des albums.
@@ -216,9 +396,98 @@ Les morceaux s'y ajoutent comme dans n'importe quelle playlist, et les favoris s
 
 Lorsque ce réglage est désactivé, la playlist et les favoris donnés ne sont pas supprimés : ils sont simplement masqués.
 
+[center_hold] Maintenir le bouton central pour éteindre
+Maintenir le bouton central enfoncé pendant 5 secondes éteint l'appareil sans demander de confirmation.
+---
+Un avertissement apparaît 2 secondes avant l'extinction. Relâcher le bouton tant que l'avertissement est visible annule l'extinction.
+
+Pour verrouiller l'écran, appuyez sur le bouton central et relâchez-le avant que l'avertissement n'apparaisse.
+
 [kb_lang2] Deuxième langue du clavier
 * Désactivé
 * Russe
 Ajoute une deuxième disposition au clavier à l'écran.
 
 Maintenez le bouton du haut pour changer.
+
+[screensaver] Économiseur d'écran
+
+[ss_on] Activer l'économiseur
+Quand le délai de veille fixé dans les Réglages expire, un économiseur d'écran apparaît au lieu du verrouillage de l'écran.
+
+[ss_style] Style
+* Horloge, gauche
+* Horloge, centre
+* Horloge, droite
+* Horloge et date, gauche
+* Horloge et date, centre
+* Horloge et date, droite
+* Titre en cours, gauche
+* Titre en cours, centre
+* Titre en cours, droite
+
+[ss_bright] Luminosité
+
+[ss_off] Éteindre l'écran après
+* 15 s
+* 30 s
+* 45 s
+* 1 min
+* 2 min
+* 3 min
+* 4 min
+* 5 min
+* 10 min
+* 15 min
+* Jamais
+Combien de temps l'économiseur reste avant que l'écran ne s'éteigne.
+
+[ss_charging] Ne pas éteindre l'écran en charge
+
+[ss_background] Fond
+* Clair
+* Sombre
+* Fond d'écran
+
+[ss_tint] Teinte du fond
+* Désactivé
+* Clair
+* Sombre
+* Couleur du thème
+
+[ss_clock_color] Couleur de l'horloge
+* Clair
+* Sombre
+* Couleur du thème
+
+[ss_text_color] Couleur du texte
+* Clair
+* Sombre
+* Couleur du thème
+
+[ss_tip]
+* Fermer
+* Ne plus afficher
+Pour changer de catégorie, utilisez les boutons gauche et droit.
+
+Pour choisir une valeur, utilisez la molette.
+
+Pour enregistrer les modifications, quittez le menu avec le bouton du haut.
+
+[[coverflow]] Cover Flow
+
+[flow_count] Albums à l'écran
+* 3
+* 5
+* 7
+
+[flow_group] Grouper par artiste
+
+[flow_year] Afficher l'année de sortie
+* Désactivé
+* À côté de l'artiste
+* À côté de l'album
+
+[flow_start] Afficher au démarrage
+* Dernière position
+* Album en cours de lecture

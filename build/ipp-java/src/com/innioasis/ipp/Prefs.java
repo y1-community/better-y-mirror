@@ -9,31 +9,16 @@ import java.util.HashMap;
 import com.innioasis.y1.Y1Application;
 
 /**
- * The mod's own preferences — the {@code "innioasis_plus"} SharedPreferences file — plus the
- * handful of small answers that are read out of it everywhere.
- *
- * Nothing here is cached: {@code getSharedPreferences} hands back a process-wide instance whose
- * values are already in memory, so a get is a map lookup and the wrapper costs nothing.
- *
- * Some of these questions have no preference behind them: where a toggle turned out to be the
- * right behaviour rather than a choice, the row is absent from the better-Y menu and the method
- * answers a constant. That keeps the call sites (stock smali among them) untouched, which is the
- * whole point of them going through here.
+ * The mod's preferences ({@code "innioasis_plus"}, never stock's file) and the small answers read
+ * from them everywhere. A few methods answer a constant: the behaviour is settled, and stock smali
+ * still calls them.
  */
 public final class Prefs {
 
     /**
-     * What every better-Y setting answers before anyone has touched it — the one place.
-     *
-     * A default named twice — once by the menu row, once by the feature's own
-     * {@code getBool(key, def)} — is a default that drifts, and the failure is silent in the worst
-     * way: the row shows "On" over a feature still behaving as "Off". So readers never state one;
-     * they ask {@link #on} / {@link #val} and the answer lives here.
-     *
-     * Booleans are 0/1. A key that is not listed answers 0 (Off / the first choice), which is
-     * what an unlisted key should mean anyway. Preferences that are not menu settings — sort modes,
-     * cache stamps, the per-song {@code like:} flags — have no business here and keep passing their
-     * own default to {@link #getBool} / {@link #getInt}.
+     * Every better-Y setting's default, in one place. Readers never state their own — a default
+     * named twice drifts, and the row shows "On" over a feature behaving as "Off". Unlisted keys
+     * answer 0. Non-menu preferences (sort modes, stamps, {@code like:}) pass their own default.
      */
     private static final HashMap DEFAULTS = new HashMap();
 
@@ -42,11 +27,15 @@ public final class Prefs {
         def("icon_tint", 0);                 // Icons.LIGHT, private there
         def(Tint.KEY_TEXT, 0);               // white, as the layout had it
         def(Tint.KEY_LYRICS, 0);
+        def(Tint.KEY_BOX, 0);                // white, as the layout had it
         def(Cover.KEY_TILT, 1);              // the stock, iPod-like look
         def("top_hold", 1);                  // Queue
         def("book_top_hold", 1);             // Queue
-        def("first_artist_only", 0);
-        def("feat_in_title", 0);
+        def(Feat.KEY_FIRST, 0);
+        def(Feat.KEY_FIRST_FEAT, 0);
+        def(Feat.KEY, 0);
+        def(Feat.KEY_VARIOUS, 0);
+        def(Feat.KEY_FEAT, 0);
         def(Ipp.KEY_LINE_SCROLL, 0);         // the title runs on its own; the two lines under it are asked for
         // [Menu]
         def("alpha_scroll", 1);
@@ -54,6 +43,17 @@ public final class Prefs {
         def("follow_playing", 1);
         def(Follow.KEY_IDLE, Follow.IDLE_DEFAULT);
         def(Pad.KEY, 1);
+        def(Loop.KEY, 0);
+        def(Anim.KEY, 1);
+        def(Anim.KEY_NAV, 1);
+        def(Anim.KEY_SCROLL, 1);
+        def(MenuStyle.KEY, 0);               // the preview beside the list, as stock draws it
+        def(Preview.KEY, 0);                 // white, as the layouts have it
+        def(TopBar.KEY_TEXT, 0);             // white, as the layout has it
+        def(TopBar.KEY_ICONS, TopBar.ALL);
+        def(TopBar.KEY_HEADER, 1);
+        def(TopBar.KEY_STYLE, 0);
+        for (int i = 0; i < MainMenu.DEFAULT_ON.length; i++) def(MainMenu.DEFAULT_ON[i], 1);
         // [Metadata]
         def("meta_title", 1);
         def("book_meta_title", 0);           // a chapter's tag is routinely worse than its file name
@@ -66,6 +66,25 @@ public final class Prefs {
         def("delete_folder", 0);             // stock leaves the folder; taking it is opt-in
         def("keep_awake", 1);
         def("likes", 1);
+        def(CenterHold.KEY, 0);
+        def(Saver.KEY_ON, 0);
+        def(Saver.KEY_STYLE, Saver.STYLE_DEFAULT);
+        def(Saver.KEY_BRIGHT, Saver.BRIGHT_DEFAULT);
+        def(Saver.KEY_OFF, Saver.OFF_DEFAULT);
+        def(Saver.KEY_CHARGING, 0);
+        def(Saver.KEY_BG, Saver.BG_WALLPAPER);   // the theme's global wallpaper until a picture is set
+        def(Saver.KEY_TINT, Saver.TINT_OFF);
+        def(Saver.KEY_CLOCK, Saver.COLOR_LIGHT);
+        def(Saver.KEY_TEXT, Saver.COLOR_LIGHT);
+        // Cover Flow's own settings
+        def(Flow.KEY_COUNT, 2);              // seven albums, as the iPod shows them
+        def(Flow.KEY_SORT, Flow.A_Z);
+        def(Flow.KEY_GROUP, 0);
+        def(Flow.KEY_YEAR, 0);
+        def(Flow.KEY_START, Flow.START_LAST);
+        // Settings -> Key tone
+        def(Tone.KEY_ON, 1);                 // stock's own default
+        def(Tone.KEY_VOLUME, Tone.VOLUME_DEFAULT);
         // kb_lang2 is deliberately absent -- see defInt
     }
 
@@ -73,56 +92,56 @@ public final class Prefs {
         DEFAULTS.put(key, Integer.valueOf(value));
     }
 
-    /**
-     * The default of a CHOICE/NUMBER setting.
-     *
-     * One of them is not a constant and cannot be tabled: the keyboard's second layout depends
-     * on the language the device is in, because stock gives a Russian device no way to type Latin
-     * at all. It is asked of {@link Keys} instead.
-     */
+    /** The keyboard's second layout depends on the device language, so {@link Keys} answers it. */
     public static int defInt(String key) {
         if (Keys.KEY_SECOND.equals(key)) return Keys.defaultSecond();
         Object v = DEFAULTS.get(key);
         return v == null ? 0 : ((Integer) v).intValue();
     }
 
-    /** The default of a TOGGLE. */
     public static boolean defBool(String key) {
         return defInt(key) != 0;
     }
 
-    /**
-     * Is this toggle on? The reader does not get to state a default — that is the whole point.
-     * A null Context answers the default rather than false: "the app is not up yet" is not the
-     * same as "the user turned it off", and without this every caller would guard for it by hand.
-     */
+    /** A null Context answers the default: "app not up yet" is not "turned off". */
     public static boolean on(Context c, String key) {
         return c == null ? defBool(key) : getBool(c, key, defBool(key));
     }
 
-    /** The value of a CHOICE/NUMBER row, with the same rule. */
     public static int val(Context c, String key) {
         return c == null ? defInt(key) : getInt(c, key, defInt(key));
     }
 
-    /**
-     * The album row's label: the real album name (stripped of the {@code name<SOH>folder} encoding
-     * that keeps same-named albums of different folders apart) with the year appended when
-     * "Show album year" is on.
-     *
-     * {@link YearCache} is still asked with the ENCODED name — that is its key, one entry per
-     * physical album — while what is shown is the decoded one.
-     */
+    /** Decoded name plus " (year)"; {@link YearCache} is keyed by the encoded name. */
     public static String albumLabel(String album) {
+        if (album == null) return Albums.realName(null);
+        // the marker rows name an album artist, which is not the key's to answer
+        if (Albums.isAllSongs(album) || Albums.isGenreAll(album)) return Albums.realName(album);
+        boolean on = albumYearEnabled();
+        String year = on ? YearCache.label(album) : null;
+        // the bind asks on every row: the name and the year are cut and joined once per album
+        synchronized (LABELS) {
+            Object[] m = (Object[]) LABELS.get(album);
+            if (m != null && m[0] == (on ? Boolean.TRUE : Boolean.FALSE)
+                    && (year == null ? m[1] == null : year.equals(m[1]))) {
+                return (String) m[2];
+            }
+        }
         String out = Albums.realName(album);
-        if (album == null || !albumYearEnabled()) {
-            return out;
+        if (on && year != null && year.length() > 0) out = out + " (" + year + ")";
+        synchronized (LABELS) {
+            LABELS.put(album, new Object[] { on ? Boolean.TRUE : Boolean.FALSE, year, out });
         }
-        String year = YearCache.get(album);
-        if (year == null || year.length() <= 0) {
-            return out;
+        return out;
+    }
+
+    private static final java.util.HashMap LABELS = new java.util.HashMap();
+
+    /** From {@code Ipp.libraryChanged}: the albums and their names are read anew. */
+    static void forgetLabels() {
+        synchronized (LABELS) {
+            LABELS.clear();
         }
-        return out + " (" + year + ")";
     }
 
     public static boolean albumYearEnabled() {
@@ -130,25 +149,15 @@ public final class Prefs {
         return on(c, "album_year");
     }
 
-    /**
-     * Ipp: an artist opens on his ALBUMS, always — the flat song list is reachable from the
-     * "Show all songs" row.
-     */
+    /** An artist opens on his albums; the songs are behind "Show all songs". */
     public static boolean artistAlbumsEnabled() {
         return true;
     }
 
-    /**
-     * Ipp: Music → Folders opens {@code \Music\}, always; the card's root is the fallback when
-     * there is no {@code \Music\} folder at all. See also {@link #videoFolderPath()}.
-     *
-     * The Context is unused and kept because the call sites are stock smali.
-     */
+    /** Music → Folders opens Music, else the card root. The Context is for the stock call sites. */
     public static String defaultFolderPath(Context c) {
         return isDir("/storage/sdcard0/Music") ? "/storage/sdcard0/Music" : "/storage/sdcard0";
     }
-
-    /** ipp: the same for Videos → Folders. */
     public static String videoFolderPath() {
         return isDir("/storage/sdcard0/Videos") ? "/storage/sdcard0/Videos" : "/storage/sdcard0";
     }
@@ -161,15 +170,17 @@ public final class Prefs {
         return new File(path).isDirectory();
     }
 
-    /**
-     * The mod's own preferences file, never stock's — everything ipp stores is in here, so clearing
-     * or backing it up touches nothing the launcher itself depends on.
-     */
     private static SharedPreferences prefs(Context c) {
         return c.getSharedPreferences("innioasis_plus", 0);
     }
 
-    /** Everything stored, for the diagnostic report ({@link Diag}). Raw map: values differ in type. */
+    /** The file itself, for keys that need {@code remove} or {@code commit}. Null before the app is up. */
+    static SharedPreferences file() {
+        Context c = Y1Application.Companion.getAppContext();
+        return c == null ? null : prefs(c);
+    }
+
+    /** For the diagnostic report. */
     static java.util.Map all(Context c) {
         return c == null ? null : prefs(c).getAll();
     }
@@ -186,12 +197,19 @@ public final class Prefs {
         prefs(c).edit().putInt(key, value).apply();
     }
 
-    /**
-     * Ipp: on for good — the track numbers it needs are read by "Cache library" in the same file
-     * open as the disc numbers, so there is nothing to opt out of. The DEFAULT sort of an album's
-     * song list is unaffected: stock's {@code getSortAlbumSong()} answers {@code FileName_A_To_Z}
-     * until the user picks something else.
-     */
+    public static String getString(Context c, String key, String def) {
+        return prefs(c).getString(key, def);
+    }
+
+    public static void setString(Context c, String key, String value) {
+        prefs(c).edit().putString(key, value).apply();
+    }
+
+    public static boolean has(Context c, String key) {
+        return prefs(c).contains(key);
+    }
+
+    /** The "Track number" sort is always offered; the album's default sort stays stock's. */
     public static boolean trackSortEnabled() {
         return true;
     }

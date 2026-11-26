@@ -15,7 +15,7 @@
 
 .method constructor <init>(Ljava/lang/String;)V
   .registers 2
-  .line 227
+  .line 197
     invoke-direct { p0 }, Ljava/lang/Object;-><init>()V
     iput-object p1, p0, Lcom/innioasis/ipp/BigCover$Warm;->path:Ljava/lang/String;
     return-void
@@ -25,16 +25,16 @@
   .catchall { :L0 .. :L1 } :L2
   .registers 2
   :L0
-  .line 230
+  .line 200
     iget-object v0, p0, Lcom/innioasis/ipp/BigCover$Warm;->path:Ljava/lang/String;
     invoke-static { v0 }, Lcom/innioasis/ipp/BigCover;->track(Ljava/lang/String;)Landroid/graphics/Bitmap;
   :L1
-  .line 233
+  .line 202
     goto :L3
   :L2
-  .line 231
+  .line 201
     move-exception v0
   :L3
-  .line 234
+  .line 203
     return-void
 .end method

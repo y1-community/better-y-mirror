@@ -12,15 +12,21 @@
 
 .field public art:[B
 
-.field public disc:I
+.field public artNs:J
 
-.field public track:Ljava/lang/String;
+.field public info:Lcom/innioasis/ipp/Meta$Info;
+
+.field public ok:Z
+
+.field public openNs:J
+
+.field public ours:Z
 
 .field public wanted:Z
 
 .method public constructor <init>()V
   .registers 1
-  .line 139
+  .line 30
     invoke-direct { p0 }, Ljava/lang/Object;-><init>()V
     return-void
 .end method

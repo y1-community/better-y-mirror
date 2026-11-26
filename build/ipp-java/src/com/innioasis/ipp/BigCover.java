@@ -3,6 +3,9 @@ package com.innioasis.ipp;
 import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
+import android.os.Handler;
+import android.os.HandlerThread;
+import android.os.SystemClock;
 
 import com.innioasis.y1.Y1Application;
 import com.innioasis.y1.database.Song;
@@ -15,118 +18,89 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Hashtable;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.zip.CRC32;
 
 /**
- * The Now-Playing cover: memory cache + a JPEG file cache under {@code getCacheDir()}.
- *
- * ONE COVER PER TRACK, ONE FILE PER ALBUM
- *
- * The memory key is the track PATH, not its folder. A folder key is wrong as soon as two songs
- * sitting in one folder carry different artwork — a folder of singles, a compilation, or a folder
- * where one song has an embedded cover and its neighbour falls back to {@code folder.jpg}:
- * whichever song is opened first would define the cover for all of them.
- *
- * The disk still holds roughly one file per album:
- *   - The first track opened in a folder writes its cover under the folder key — the
- *       album's representative.
- *   - Every later track is compared against that representative ({@link Bitmap#sameAs}), which is
- *       true for an ordinary album. It then simply shares that one Bitmap: no second entry on
- *       disk, no second allocation in memory, and {@code Cover.fitMemo}/{@code Cover.reflect} keep
- *       hitting their memo because the object identity is unchanged.
- *   - Only a track whose artwork genuinely differs gets a file of its own.
- *
- * THE ANSWER PER TRACK IS WRITTEN DOWN ({@link #note})
- *
- * For the overwhelming majority of tracks there is nothing to put on disk, only the one bit
- * "this track shares the album's picture" — and kept in memory alone that bit dies with the
- * process, so after a reboot (or a theme switch, which kills the process) every track has to have
- * its tags read again before its cover can be shown, and "Cache library" can pre-fill nothing for
- * the player. So it is a small text file beside {@code ipp_discs.txt} mapping a track path to one
- * of {@link #NONE} / {@link #SHARED} / {@link #OWN}: the per-track guarantee survives a restart at
- * one line per song instead of one JPEG per song.
- *
- * RESOLUTION
- *
- * {@link #SIZE} is a cap, not a target: a cover that is already smaller is kept at its own
- * resolution and only compressed, because scaling 200x200 up to 300x300 stores (and displays) a
- * blurred version of a picture we have in full. Anything larger is scaled down to 300.
- * The crop is the same either way — {@code Ipp.square} fits by height and centre-crops the width,
- * and at the source's own height that fit is a no-op, so only the crop happens. The JPEG quality
- * follows from that same side: see {@link #quality}.
- *
- * To keep the tag read off the eye, {@link #prefetch} starts it the moment the song is picked in a
- * menu and {@link #prefetchPlaying} on every track change, so the read overlaps the player's own
- * ~200 ms of construction and layout instead of showing up as an empty cover frame afterwards.
- * The 50px list thumbnails are untouched — there, one cover per album is the intended behaviour.
+ * The Now-Playing cover: memory + JPEG cache. Keyed by track PATH — tracks of one folder can
+ * differ — yet about one file per album: the first track of a folder is its representative, a
+ * pixel-equal track shares that Bitmap, only differing artwork gets a file. The per-track answer
+ * ({@link #note}) is persisted so it survives a restart. {@link #SIZE} caps, never upscales.
  */
 public final class BigCover {
 
     private BigCover() { }
 
     private static final int SIZE = 300;
-    /**
-     * The compression scheme's version marker: the sweep in {@link #dir} deletes every cached file
-     * that does not end with this, so changing the scheme means changing this string and the old
-     * files go on the first run. Quality is not part of a file name, so without that a changed
-     * setting stays invisible until the user clears the cache by hand.
-     */
+    /** Change it with the compression scheme: {@link #dir} sweeps every file not ending in it. */
     private static final String SUFFIX = "-300q.jpg";
 
-    // ---- how hard a cover may be compressed -----------------------------------------------------
-    //
-    // The target is a FILE WEIGHT, not a quality number: the quality that reaches a given weight
-    // depends entirely on the picture, and it is the weight that has to be bounded. So the encoder
-    // is run at the highest quality whose output still fits {@link #LIMIT}, which by construction is
-    // also the one that lands closest to it from below.
-    //
-    // The bounds are given on the PHOTOSHOP scale in the request (65..90) and are NOT the same
-    // numbers here. Android compresses through libjpeg with the standard quantisation tables;
-    // Photoshop's "Save for Web" uses its own, considerably gentler ones, so the same number is a
-    // different picture — libjpeg 65 looks about like Photoshop 45..55. These two constants are the
-    // libjpeg equivalents of Photoshop 65 and 90; change them, not the comment, if the anchor moves.
+    // The target is a file WEIGHT: the highest quality whose output fits LIMIT. The bounds are
+    // libjpeg's equivalents of Photoshop 65..90 — the same number is a harsher picture here.
     private static final int Q_MIN = 76;       // ~ Photoshop 65
     private static final int Q_MAX = 92;       // ~ Photoshop 90
 
-    /**
-     * The most a cached cover may weigh. A source that already fits is stored verbatim —
-     * whatever its pixel size — so an already-compressed cover is never compressed a second time;
-     * {@link #peek} caps the decode instead, which is where the pixel size actually matters.
-     */
+    /** A source that already fits is stored verbatim, never compressed twice. */
     private static final int LIMIT = 25 * 1024;
 
-    /** key (track path or folder) -> Bitmap. Same-artwork tracks share one entry's Bitmap. */
-    private static final Hashtable mem = new Hashtable();
+    /**
+     * Track path or folder -> Bitmap, LRU. Bounded: Cover Flow reads every album it passes, and an
+     * unbounded map filled the heap into constant GC pauses.
+     */
+    private static final Map mem = Collections.synchronizedMap(new Lru());
+    private static final int MEM_MAX = 24;
 
-    /** key -> key, for "there is no cover here", so a coverless track is not re-read. */
+    static long memBytes() {
+        java.util.ArrayList l;
+        synchronized (mem) {
+            l = new java.util.ArrayList(mem.values());
+        }
+        return Diag.bitmapBytes(l);
+    }
+
+    private static final class Lru extends LinkedHashMap {
+        Lru() { super(32, 0.75f, true); }
+
+        protected boolean removeEldestEntry(Map.Entry e) { return size() > MEM_MAX; }
+    }
+
+    /** "No cover here", so a coverless track is not re-read. */
     private static final Hashtable miss = new Hashtable();
 
     private static boolean swept;
 
-    /** Guards the read-and-store path in {@link #track} against two background readers at once. */
     private static final Object LOCK = new Object();
 
-    // ---------------------------------------------------------------- public API
+    /** The cover of one track, reading and caching it if needed. Off the main thread only. */
+    public static Bitmap track(String path) {
+        return track(path, true);
+    }
 
     /**
-     * The cover of one track, reading and caching it if needed. The only entry point the player
-     * uses ({@code Ipp.bigCover}, from the background coroutine).
+     * {@link #track} that leaves memory as it was: for a reader that walks many albums, as Cover
+     * Flow does after the cache was cleared. The file and the note are written as usual.
      */
-    public static Bitmap track(String path) {
+    public static Bitmap trackFree(String path) {
+        return track(path, false);
+    }
+
+    private static Bitmap track(String path, boolean store) {
         if (path == null) return null;
-        Bitmap hit = peekTrack(path);
+        Bitmap hit = store ? peekTrack(path) : peekTrackFree(path);
         if (hit != null) return hit;
         if (miss.containsKey(path)) return null;
 
-        // Two background readers can want the same track at once — the prefetch below and the
-        // player's own async load. Serialising them means the second one finds the answer in
-        // memory instead of decoding the same file again. Only ever called off the main thread.
+        // the prefetch and the player's own load: the second finds the answer in memory
         synchronized (LOCK) {
-            hit = peekTrack(path);
+            hit = store ? peekTrack(path) : peekTrackFree(path);
             if (hit != null) return hit;
             if (miss.containsKey(path)) return null;
 
@@ -136,9 +110,12 @@ public final class BigCover {
             Src src;
             try {
                 src = read(path);
+            } catch (OutOfMemoryError e) {
+                return null;
             } catch (Throwable t) {
                 src = null;
             }
+            if (src == UNREAD) return null;
             if (src == null) {
                 miss.put(path, path);
                 noteSet(path, NONE);
@@ -146,82 +123,75 @@ public final class BigCover {
             }
             Bitmap fresh = src.bmp;
 
-            Bitmap rep = peek(folder);
+            // noted only once the JPEG is on disk: a note without its file is never read again
+            Bitmap rep = peek(folder, store);
             if (rep == null) {
-                // First track seen in this folder: it becomes the album's representative.
-                store(folder, src);
-                mem.put(path, fresh);
+                if (store) mem.put(path, fresh);
+                if (!store(folder, src, null, store)) return fresh;
+                sigSet(folder, src.raw);
                 noteSet(path, SHARED);
                 return fresh;
             }
-            if (same(rep, fresh)) {
-                mem.put(path, rep);        // share the representative; nothing new on disk
+            if (sigIs(folder, src.raw) || same(rep, fresh)) {
+                if (store) mem.put(path, rep);
                 noteSet(path, SHARED);
                 return rep;
             }
-            store(path, src);              // genuinely different artwork -> its own entry
-            mem.put(path, fresh);
-            noteSet(path, OWN);
+            if (store) mem.put(path, fresh);
+            if (store(path, src, null, store)) noteSet(path, OWN);
             return fresh;
         }
     }
 
     /**
-     * Warm the cache for the song that is about to be opened, from the moment it is picked in a
-     * menu ({@code PlayerService.setMusicPlaylist}). The player Activity still has to be created,
-     * inflated and laid out — a couple of hundred milliseconds — so this head start is usually
-     * enough for {@code Ipp.instantCover} to find the cover already there and paint it with the
-     * first frame.
-     *
-     * Why this and not a stand-in: painting the album's own cover instantly and swapping it when
-     * the track's real one arrives is wrong for a track whose artwork differs. Reading early is the
-     * only way to be both instant and right; it costs nothing when the track is already cached, and
-     * nothing on the main thread either way.
+     * Read the cover of the song picked in a menu while the player is still being built, so
+     * {@code Cover.instantCover} paints it with the first frame. Not a stand-in album cover: a
+     * track's own artwork can differ.
      */
     public static void prefetch(List playlist, int pos) {
         try {
             if (playlist == null || pos < 0 || pos >= playlist.size()) return;
             Object o = playlist.get(pos);
             if (!(o instanceof Song)) return;
+            Ahead.picked(((Song) o).getPath());
             warm(((Song) o).getPath());
         } catch (Throwable t) {
-            // a cover is never worth failing playback for
         }
     }
 
     /**
-     * Same head start for a track the user switched to by hand while a list is on screen.
-     *
-     * {@link #prefetch} only fires from {@code setMusicPlaylist} / {@code setAudiobookPlaylist},
-     * i.e. when a song is opened from a menu — the side buttons never go through those, so
-     * skipping a few tracks in a list and then opening the player found nothing cached and the
-     * cover popped in late. Called from {@code ListWatch.onReceive}, which already listens for
-     * {@code MY_PLAY_SONG}.
-     *
-     * {@code getPlayingSong} rather than {@code getPlayingMusic}: it answers with whichever of the
-     * two is actually playing, so an audiobook gets the same head start.
+     * The same head start on every track change ({@code ListWatch}) — the side buttons never go
+     * through {@link #prefetch}. {@code getPlayingSong}, so audiobooks are covered too. The track
+     * after it as well: the next press then finds its cover in memory instead of decoding the
+     * JPEG on the main thread.
      */
     public static void prefetchPlaying() {
         try {
             PlayerService s = Y1Application.Companion.getPlayerService();
             Song song = s == null ? null : s.getPlayingSong();
             warm(song == null ? null : song.getPath());
+            warm(Queue.nextPath());
         } catch (Throwable t) {
-            // ignore
         }
     }
 
-    /**
-     * Start the background read unless the answer is already in memory. Deliberately checks
-     * {@code mem} and not {@link #peek} — peek decodes the cached JPEG, and both callers are on the
-     * main thread; letting the worker do that read costs nothing and keeps the caller free.
-     */
+    /** Checks {@code mem}, not {@link #peek}: peek decodes, and the callers are on the main thread. */
     private static void warm(String path) {
         if (path == null || mem.get(path) != null || miss.containsKey(path)) return;
-        new Thread(new Warm(path)).start();
+        if (worker == null) {
+            HandlerThread t = new HandlerThread("ipp-cover");
+            t.start();
+            worker = new Handler(t.getLooper());
+        }
+        worker.post(new Warm(path));
     }
 
-    /** Named (d8 here crashes on anonymous classes). */
+    /**
+     * One thread for every read ahead: starting a thread per track costs the main thread more than
+     * the read saves. Ordinary priority — at a background one it stalls with locks held.
+     */
+    private static Handler worker;
+
     static final class Warm implements Runnable {
         private final String path;
         Warm(String path) { this.path = path; }
@@ -229,18 +199,13 @@ public final class BigCover {
             try {
                 track(path);
             } catch (Throwable t) {
-                // ignore
             }
         }
     }
 
     /**
-     * Cover for the instant paint: strictly what we already have for this exact track.
-     * Never reads tags, so it is safe on the UI thread.
-     *
-     * It deliberately does not fall back to the album's representative as a guess. It does
-     * hand back that very bitmap for a track {@link #note}d as {@link #SHARED} — but that is not a
-     * guess, it is a recorded pixel comparison, which is the whole reason the note is persisted.
+     * Strictly what we already have for this track; never reads tags. The representative only for
+     * a track noted {@link #SHARED} — a recorded comparison, never a guess.
      */
     public static Bitmap peekTrack(String path) {
         if (path == null) return null;
@@ -252,16 +217,41 @@ public final class BigCover {
         return b;
     }
 
+    /** The cached JPEG of this track, or null. Fills nothing in memory: for Cover Flow. */
+    public static File cachedFile(String path) {
+        if (path == null) return null;
+        int n = note(path);
+        String key = n == OWN ? path : n == SHARED ? Albums.trackFolder(path) : null;
+        File f = key == null ? null : file(key);
+        return f != null && f.exists() ? f : null;
+    }
+
     /**
-     * Memory, then the "no cover" answers, then the JPEG file cache.
-     *
-     * The decode is CAPPED and cropped here, not only when the cover was written: a source that
-     * already met the weight budget is stored untouched, so the file may be any resolution and any
-     * aspect ratio. Doing it on the way out keeps the picture identical to what {@code read}
-     * produced for the same bytes — which is what lets {@code same()} still recognise two tracks as
-     * sharing one album's artwork.
+     * Memory, then the misses, then the JPEG. Capped and cropped on the way OUT — a verbatim file
+     * may be any size — so it matches what {@code read} gives and {@code same()} still works.
      */
     public static Bitmap peek(String key) {
+        return peek(key, true);
+    }
+
+    /**
+     * {@link #peekTrack} that leaves memory as it was: for pictures built ahead in Cover Flow,
+     * where every album the row rested on would otherwise stay in memory and every collector
+     * pause grows with it. {@link #keep} puts the one that is used in.
+     */
+    public static Bitmap peekTrackFree(String path) {
+        if (path == null) return null;
+        Bitmap b = peek(path, false);
+        if (b != null || note(path) != SHARED) return b;
+        return peek(Albums.trackFolder(path), false);
+    }
+
+    /** A cover read by {@link #peekTrackFree}, into memory once it is the one being played. */
+    public static void keep(String path, Bitmap b) {
+        if (path != null && b != null && mem.get(path) == null) mem.put(path, b);
+    }
+
+    private static Bitmap peek(String key, boolean store) {
         if (key == null) return null;
         Object hit = mem.get(key);
         if (hit != null) return (Bitmap) hit;
@@ -283,16 +273,11 @@ public final class BigCover {
         } catch (Throwable t) {
             b = null;
         }
-        if (b != null) mem.put(key, b);
+        if (b != null && store) mem.put(key, b);
         return b;
     }
 
-    /**
-     * Drop one key — memory, the "no cover" answer, the written-down per-track answer and the JPEG
-     * on disk. Called per song from {@code Ipp.songChanged} (the "Update library" path) for both
-     * the track and its folder, so replaced artwork is actually re-read instead of being served
-     * from the cache.
-     */
+    /** Drop one key everywhere — memory, miss, note, JPEG, Cover Flow's copy ({@code Ipp.songChanged}). */
     public static void forget(String key) {
         if (key == null) return;
         mem.remove(key);
@@ -302,8 +287,8 @@ public final class BigCover {
             File f = file(key);
             if (f != null) f.delete();
         } catch (Throwable t) {
-            // nothing to do
         }
+        FlowCache.forget(key);
     }
 
     /** Forget only the "no cover here" answers, keeping the covers we did find. */
@@ -325,27 +310,34 @@ public final class BigCover {
             for (int i = 0; i < fs.length; i++) fs[i].delete();
             d.delete();
         } catch (Throwable t) {
-            // nothing to do
         }
     }
 
-    // ---------------------------------------------------------------- "Cache library"
-
     /**
-     * One folder being walked, and its representative — the ONLY picture a walk holds.
-     *
-     * An object per walk, not three statics: the caching pass is several threads, each taking whole
-     * folders at a time, and a representative belongs to a FOLDER rather than to the pass — two
-     * workers in two folders must not see each other's. Everything else the
-     * walk touches is already safe for that — {@code mem}/{@code miss} are Hashtables, the notes are
-     * synchronized, and the JPEGs are written under keys no two folders share.
+     * "Cache library": one folder being walked and its representative. An object, not statics —
+     * the pass runs several threads, each in its own folder.
      */
     public static final class Walk {
         private String folder;
         private byte[] raw;        // the representative's own file bytes, when read in this pass
         private Bitmap rep;        // decoded — only when a track's bytes actually differ
+        // the last cover file read, kept across folders: a folder.jpg above serves several
+        private String extPath;
+        private long extLen, extMod;
+        private byte[] extBytes;
+        // the answer for the last directory, none included: a miss on FAT scans the whole directory
+        private String extDir;
+        private byte[] extDirBytes;
 
-        /** Done with this folder: let go of the representative (it is on disk, not in memory). */
+        // Where the time went, for the pass's log line. Counts by where the picture came from and
+        // which way it was settled; times in ns.
+        public long embedded, external, none;
+        public long sameBytes, sigOnDisk, verbatim, encoded, samePixels, own, failed;
+        public long externalNs, decodeNs, storeNs, extLookups;
+        // storeNs split: the source's decode for a re-encode, the encodes (and their count), the writes
+        public long srcDecodeNs, encodeNs, probes, writeNs;
+
+        /** Done with this folder: the representative is on disk. */
         public void done() {
             if (folder != null) mem.remove(folder);
             folder = null;
@@ -354,110 +346,115 @@ public final class BigCover {
         }
     }
 
-    /** True while a caching pass is running, so the notes are written once instead of per song. */
+    /** While a pass runs the notes are saved once, at its end. */
     private static volatile boolean passing;
 
-    /** True while this track's cover has never been looked at; decides whether its tags need reading. */
+    /** This track's cover has never been looked at, or its note points at a JPEG that is not there. */
     public static boolean needs(String path) {
-        return note(path) == UNKNOWN;
+        int n = note(path);
+        if (n == UNKNOWN) return true;
+        if (n == NONE) return false;
+        return cachedFile(path) == null;
     }
 
-    /**
-     * True only when this track is already KNOWN to have no artwork at all — a recorded answer
-     * rather than a guess, the same note {@link #peekTrack} trusts — which lets the player paint
-     * its placeholder
-     * the moment the song starts instead of waiting for the async read to come back empty
-     * ({@code Cover.instantBlank}). UNKNOWN says nothing, so a track nobody has read yet keeps
-     * the old behaviour rather than being shown a placeholder it may not need.
-     */
-    /**
-     * This track carries artwork of its OWN, different from its folder's representative.
-     * The search row asks so it can show the song's picture rather than the album's; the answer is
-     * the persisted note, so it costs a map lookup once the track has been read (by the player, the
-     * prefetch or "Cache library").
-     */
+    /** This track has artwork of its OWN, different from its folder's (the Search row). */
     public static boolean ownArt(String path) {
         return note(path) == OWN;
     }
 
+    /**
+     * KNOWN to have no artwork — a recorded answer, so the player paints its placeholder at once
+     * ({@code Cover.instantBlank}). UNKNOWN says nothing.
+     */
     public static boolean knownNone(String path) {
         return note(path) == NONE;
     }
 
     /**
-     * Fill the cache for one track from "Cache library" ([Tools] in better-Y), so the player
-     * never has to read a tag while the user is waiting for it.
-     *
-     * Two things separate this from {@link #track}. The answer is written down for every song,
-     * which is what makes the pass worth anything after a restart — for most tracks there is
-     * nothing to put on disk, only the note that they share their album's picture. And nothing
-     * is kept in memory beyond the album currently being walked: a 300px cover is ~360 KB
-     * decoded, so a few hundred albums of them would be hundreds of megabytes and the pass would
-     * run out of memory long before it finished. The representative is held in a field rather than
-     * read back through {@link #peek}, because what is on disk is a lossy JPEG and comparing a
-     * fresh decode against a re-decoded JPEG never matches — the caller feeds this the library
-     * ordered by path, so a folder's songs arrive together and one held representative is enough.
-     *
-     * The artwork comes from the caller ({@code DiscCache.readTrack}), which already had the file
-     * open for the disc and track numbers; only a track with no embedded picture is looked up on
-     * disk here. Between that and the byte comparison below, an ordinary album now costs one file
-     * open per song and one decode per album — and often not even that.
-     *
-     * Never call from the UI thread.
+     * "Cache library" for one track. Unlike {@link #track}: the note is written for every song,
+     * and nothing stays in memory beyond the folder being walked (hundreds of decoded covers run
+     * out of memory). The representative is held, not re-read: a re-decoded JPEG never matches.
+     * {@code embedded} comes from the caller, which already had the file open. Never on the UI thread.
+     * False when the JPEG could not be written: the track is left unknown for the next pass.
      */
-    public static void cache(Walk w, String path, byte[] embedded) {
-        if (path == null || w == null) return;
+    public static boolean cache(Walk w, String path, byte[] embedded) {
+        if (path == null || w == null) return true;
         try {
-            if (note(path) != UNKNOWN) return;          // answered by an earlier pass
+            if (!needs(path)) return true;
             String folder = Albums.trackFolder(path);
             if (w.folder != null && !w.folder.equals(folder)) w.done();
             w.folder = folder;
 
-            byte[] raw = embedded != null && embedded.length > 0 ? embedded : external(path);
-            if (raw == null || raw.length == 0) { noteSet(path, NONE); return; }
+            byte[] raw;
+            if (embedded != null && embedded.length > 0) {
+                raw = embedded;
+                w.embedded++;
+            } else {
+                long t0 = System.nanoTime();
+                raw = external(w, path);
+                w.externalNs += System.nanoTime() - t0;
+                if (raw != null && raw.length > 0) w.external++;
+            }
+            if (raw == null || raw.length == 0) { w.none++; noteSet(path, NONE); return true; }
 
-            // The cheap answer, and the one that applies to nearly every track: an album's songs
-            // carry the very same picture BYTE FOR BYTE, so the comparison the cache needs can be
-            // made without decoding anything at all — neither this track's artwork nor the
-            // representative's. Decoding both and comparing pixels ({@link #same}) would be that work for
-            // every song of every album.
+            // nearly every track: the same bytes as the representative, nothing decoded
             if (w.raw != null && Arrays.equals(w.raw, raw)) {
+                w.sameBytes++;
                 noteSet(path, SHARED);
-                return;
+                return true;
             }
 
             if (w.raw == null && w.rep == null) {
-                Bitmap onDisk = peek(folder);
-                if (onDisk == null) {
-                    w.rep = storeSrc(folder, raw);      // this album's representative
+                File had = file(folder);
+                if (had != null && had.exists() && sigIs(folder, raw)) {
+                    w.sigOnDisk++;
                     w.raw = raw;
                     noteSet(path, SHARED);
-                    return;
+                    return true;
                 }
-                w.rep = onDisk;                         // written by an earlier pass or the player
+                long t0 = System.nanoTime();
+                Bitmap onDisk = peek(folder);
+                w.decodeNs += System.nanoTime() - t0;
+                if (onDisk == null) {
+                    t0 = System.nanoTime();
+                    int r = storeSrc(w, folder, raw);
+                    w.storeNs += System.nanoTime() - t0;
+                    if (r == STORE_FAILED) { w.failed++; return false; }
+                    if (r == STORE_NO_PICTURE) { w.none++; noteSet(path, NONE); return true; }
+                    w.raw = raw;
+                    sigSet(folder, raw);
+                    noteSet(path, SHARED);
+                    return true;
+                }
+                w.rep = onDisk;
             }
 
-            // Genuinely different bytes. Only here is anything decoded — and the representative
-            // only if it was stored verbatim and so never was.
+            long t0 = System.nanoTime();
             Bitmap fresh = capped(raw);
-            if (fresh == null) { noteSet(path, NONE); return; }
-            if (w.rep == null) w.rep = capped(w.raw);
+            if (fresh != null && w.rep == null) w.rep = capped(w.raw);
+            w.decodeNs += System.nanoTime() - t0;
+            if (fresh == null) { w.none++; noteSet(path, NONE); return true; }
             if (same(w.rep, fresh)) {
-                // Pixel-equal to the representative, so these bytes stand for it from here on —
-                // which is what gets the cheap path going in a folder whose representative was
-                // already on disk (there, the stored JPEG's bytes are not the source's).
+                w.samePixels++;
+                // these bytes stand for the representative from now on: starts the byte path
                 if (w.raw == null) w.raw = raw;
                 noteSet(path, SHARED);
-            } else {
-                Src src = new Src();
-                src.bmp = fresh;
-                src.raw = raw;
-                store(path, src);
-                mem.remove(path);                        // the file is the cache here, not memory
-                noteSet(path, OWN);
+                return true;
             }
+            Src src = new Src();
+            src.bmp = fresh;
+            src.raw = raw;
+            t0 = System.nanoTime();
+            boolean ok = store(path, src, w);
+            w.storeNs += System.nanoTime() - t0;
+            mem.remove(path);
+            if (!ok) { w.failed++; return false; }
+            w.own++;
+            noteSet(path, OWN);
+            return true;
         } catch (Throwable t) {
-            // one unreadable file must not stop the pass
+            w.failed++;
+            return false;
         }
     }
 
@@ -465,65 +462,110 @@ public final class BigCover {
     private static byte[] external(String path) {
         try {
             File f = Art.file(path);
-            return f == null ? null : readAll(f);
+            if (f == null) return null;
+            Art.stampRead(path);
+            return readAll(f);
         } catch (Throwable t) {
             return null;
         }
     }
 
     /**
-     * Write one album representative during a pass, decoding it only if it has to be re-encoded.
-     * Returns the decoded picture when there is one, so the caller can hold it — or null, which
-     * means "stored verbatim, nothing decoded" and is the normal case.
+     * {@link #external(String)} for a pass: a folder's songs share one cover file, so the bytes
+     * read for the last song are handed back while the file's path, length and date are the same.
+     * A directory is looked up once; what changed under the pass was dropped at its start.
      */
-    private static Bitmap storeSrc(String key, byte[] raw) {
-        if (raw.length <= LIMIT && isJpeg(raw)) {
-            write(key, raw);
-            return null;
+    private static byte[] external(Walk w, String path) {
+        int cut = path.lastIndexOf('/');
+        String dir = cut > 0 ? path.substring(0, cut) : "";
+        if (dir.equals(w.extDir)) return w.extDirBytes;
+        try {
+            byte[] b = externalFile(w, path);
+            w.extDir = dir;
+            w.extDirBytes = b;
+            w.extLookups++;
+            return b;
+        } catch (Throwable t) {
+            return null;                    // not remembered: the next song of the folder tries again
         }
-        Bitmap b = capped(raw);
-        if (b == null) return null;
-        Src s = new Src();
-        s.bmp = b;
-        s.raw = raw;
-        store(key, s);
-        mem.remove(key);            // during a pass the file is the cache, not memory
+    }
+
+    private static byte[] externalFile(Walk w, String path) throws IOException {
+        File f = Art.file(path);
+        if (f == null) return null;
+        Art.stampRead(path);
+        String p = f.getPath();
+        long len = f.length();
+        long mod = f.lastModified();
+        if (w.extBytes != null && p.equals(w.extPath) && len == w.extLen && mod == w.extMod) {
+            return w.extBytes;
+        }
+        byte[] b = readAll(f);
+        w.extPath = p;
+        w.extLen = len;
+        w.extMod = mod;
+        w.extBytes = b;
         return b;
     }
 
-    /** A caching pass is starting: hold the per-song notes back until it ends. */
+    private static final int STORED = 0;
+    private static final int STORE_NO_PICTURE = 1;
+    private static final int STORE_FAILED = 2;
+
+    /** Store a representative during a pass; a fitting JPEG goes verbatim, nothing decoded. */
+    private static int storeSrc(Walk w, String key, byte[] raw) {
+        if (raw.length <= LIMIT && isJpeg(raw)) {
+            w.verbatim++;
+            long t0 = System.nanoTime();
+            boolean ok = write(key, raw);
+            w.writeNs += System.nanoTime() - t0;
+            return ok ? STORED : STORE_FAILED;
+        }
+        w.encoded++;
+        long t0 = System.nanoTime();
+        Bitmap b = capped(raw);
+        w.srcDecodeNs += System.nanoTime() - t0;
+        if (b == null) return STORE_NO_PICTURE;
+        Src s = new Src();
+        s.bmp = b;
+        s.raw = raw;
+        boolean ok = store(key, s, w);
+        mem.remove(key);
+        if (!ok) return STORE_FAILED;
+        w.rep = b;
+        return STORED;
+    }
+
     public static void beginCache() {
         passing = true;
     }
 
-    /** End of the caching pass: write the notes down once. */
     public static void endCache() {
         passing = false;
         noteSave();
     }
 
-    // ---------------------------------------------------------------- the per-track note
-
-    /** Never looked at. */
+    // The per-track note.
     private static final int UNKNOWN = -1;
-    /** Read, and this track has no artwork at all — neither in the tags nor beside the file. */
+    /** No artwork, in the tags or beside the file. */
     private static final int NONE = 0;
-    /** Read, and its picture is pixel-identical to the album representative under the folder key. */
+    /** Pixel-identical to the folder's representative. */
     private static final int SHARED = 1;
-    /** Read, and different enough to have a cached JPEG of its own under the track key. */
+    /** A JPEG of its own under the track key. */
     private static final int OWN = 2;
 
     private static final HashMap notes = new HashMap();   // track path -> Integer
     private static boolean notesLoaded;
     private static boolean notesDirty;
+    /** False only while no note can be NONE: clearMiss then has nothing to look for. */
+    private static boolean mayNone;
     private static final char SEP = '\t';
 
     private static File noteFile() {
         Context c = Y1Application.Companion.getAppContext();
         if (c == null) return null;
         File d = c.getCacheDir();
-        // beside ipp_discs.txt / ipp_years.txt, NOT inside ipp_big/ — dir() sweeps that folder of
-        // everything that is not a -300.jpg
+        // NOT inside ipp_big/, which dir() sweeps
         return d == null ? null : new File(d, "ipp_bigcover.txt");
     }
 
@@ -543,35 +585,87 @@ public final class BigCover {
                 int t = s.indexOf(SEP);
                 if (t <= 0) continue;
                 try {
-                    notes.put(s.substring(0, t), Integer.valueOf(s.substring(t + 1).trim()));
+                    Integer v = Integer.valueOf(s.substring(t + 1).trim());
+                    notes.put(s.substring(0, t), v);
+                    if (v.intValue() == NONE) mayNone = true;
                 } catch (Throwable e) {
-                    // a corrupt line is one song that gets read again
                 }
             }
         } catch (Throwable t) {
-            // an unreadable cache is an empty cache
         }
     }
 
-    private static synchronized void noteSave() {
-        if (!notesDirty) return;
-        try {
-            File f = noteFile();
-            if (f == null) return;
-            StringBuilder sb = new StringBuilder();
-            Iterator it = notes.entrySet().iterator();
-            while (it.hasNext()) {
-                Map.Entry e = (Map.Entry) it.next();
-                String k = (String) e.getKey();
-                if (k == null || k.indexOf(SEP) >= 0) continue;
-                sb.append(k).append(SEP).append(((Integer) e.getValue()).intValue()).append('\n');
-            }
-            FileOutputStream o = new FileOutputStream(f);
-            o.write(sb.toString().getBytes("UTF-8"));
-            o.close();
+    /** Written from a snapshot, outside the class lock: the main thread asks notes meanwhile. */
+    private static void noteSave() {
+        Object[] ks, vs;
+        synchronized (BigCover.class) {
+            if (!notesDirty) return;
             notesDirty = false;
-        } catch (Throwable t) {
-            // keep what we have in memory for this run
+            ks = notes.keySet().toArray();
+            vs = notes.values().toArray();
+        }
+        boolean ok = false;
+        synchronized (NOTE_FILE) {
+            try {
+                File f = noteFile();
+                if (f != null) {
+                    // streamed: the whole file built as one String was ~2.5 MB of garbage per
+                    // note, a run of stop-everything collections at every first open of a track
+                    File tmp = new File(f.getPath() + ".tmp");
+                    java.io.Writer w = new java.io.BufferedWriter(
+                            new java.io.OutputStreamWriter(new FileOutputStream(tmp), "UTF-8"), 8192);
+                    try {
+                        for (int i = 0; i < ks.length; i++) {
+                            String k = (String) ks[i];
+                            if (k == null || k.indexOf(SEP) >= 0) continue;
+                            w.write(k);
+                            w.write(SEP);
+                            w.write(String.valueOf(((Integer) vs[i]).intValue()));
+                            w.write('\n');
+                        }
+                    } finally {
+                        w.close();
+                    }
+                    ok = tmp.renameTo(f);
+                }
+            } catch (Throwable t) {
+            }
+        }
+        if (!ok) {
+            synchronized (BigCover.class) {
+                notesDirty = true;
+            }
+        }
+    }
+
+    private static final Object NOTE_FILE = new Object();
+
+    // A new note outside a pass is written once the notes stop coming: per note it was the whole
+    // file (~400 KB) per track read. A process that dies meanwhile loses only those notes, and
+    // their tracks are read again.
+    private static final long SAVE_DELAY_MS = 5000L;
+    private static long lastNote;
+    private static boolean saveAsked;
+
+    private static synchronized void askSave() {
+        lastNote = SystemClock.uptimeMillis();
+        if (saveAsked) return;
+        saveAsked = true;
+        Albums.later(new Save(), SAVE_DELAY_MS);
+    }
+
+    static final class Save implements Runnable {
+        public void run() {
+            long wait;
+            synchronized (BigCover.class) {
+                wait = SAVE_DELAY_MS - (SystemClock.uptimeMillis() - lastNote);
+                if (wait <= 0) saveAsked = false;
+            }
+            if (wait > 0) {
+                Albums.later(this, wait);
+                return;
+            }
+            noteSave();
         }
     }
 
@@ -582,94 +676,116 @@ public final class BigCover {
         return o == null ? UNKNOWN : ((Integer) o).intValue();
     }
 
-    /**
-     * Record one answer. Written out immediately outside a caching pass (one track opened in the
-     * player is one small file write, and the process can be killed at any time), and only at the
-     * end of it while {@link #cache} is walking the library — a save per song there would rewrite
-     * the whole file thousands of times.
-     */
+    /** Saved a few seconds after the last new note outside a pass, once at a pass's end. */
     private static synchronized void noteSet(String path, int value) {
         if (path == null) return;
         noteLoad();
         Object had = notes.put(path, Integer.valueOf(value));
+        if (value == NONE) mayNone = true;
         if (had != null && ((Integer) had).intValue() == value) return;
         notesDirty = true;
-        if (!passing) noteSave();
+        if (!passing) askSave();
     }
 
     private static synchronized void noteForget(String key) {
         noteLoad();
-        if (notes.remove(key) != null) { notesDirty = true; noteSave(); }
+        boolean had = notes.remove(key) != null;
+        if (notes.remove(SIG + key) != null) had = true;
+        if (had) { notesDirty = true; if (forgetting == 0) noteSave(); }
     }
 
-    /** The "no artwork" answers only — the counterpart of {@link #clearMiss} on disk. */
+    // a batch of forgets writes the notes once, at its end, not the whole file per forget
+    private static int forgetting;
+
+    public static synchronized void beginForget() {
+        forgetting++;
+    }
+
+    public static synchronized void endForget() {
+        if (forgetting > 0) forgetting--;
+        if (forgetting == 0 && !passing) noteSave();
+    }
+
+    /** {@link #clearMiss} on disk. */
     private static synchronized void noteForgetNone() {
         noteLoad();
+        if (!mayNone) return;
         ArrayList drop = new ArrayList();
         Iterator it = notes.entrySet().iterator();
         while (it.hasNext()) {
             Map.Entry e = (Map.Entry) it.next();
+            if (((String) e.getKey()).startsWith(SIG)) continue;
             if (((Integer) e.getValue()).intValue() == NONE) drop.add(e.getKey());
         }
+        mayNone = false;
         if (drop.isEmpty()) return;
         for (int i = 0; i < drop.size(); i++) notes.remove(drop.get(i));
         notesDirty = true;
         noteSave();
     }
 
+    // The representative's SOURCE bytes, as a checksum beside the notes. A re-compressed JPEG
+    // never decodes back to its source's pixels, so without it every track compared against a
+    // representative read off the disk gets a file of its own.
+
+    private static final String SIG = "\u0001";
+
+    private static int sig(byte[] raw) {
+        CRC32 c = new CRC32();
+        c.update(raw, 0, raw.length);
+        return (int) c.getValue() ^ raw.length;
+    }
+
+    private static synchronized void sigSet(String folder, byte[] raw) {
+        if (folder == null || raw == null) return;
+        noteLoad();
+        Integer v = Integer.valueOf(sig(raw));
+        if (v.equals(notes.put(SIG + folder, v))) return;
+        notesDirty = true;
+        if (!passing) askSave();
+    }
+
+    private static synchronized boolean sigIs(String folder, byte[] raw) {
+        if (folder == null || raw == null) return false;
+        noteLoad();
+        Object had = notes.get(SIG + folder);
+        return had != null && ((Integer) had).intValue() == sig(raw);
+    }
+
     private static synchronized void noteClear() {
         notes.clear();
+        mayNone = false;
         notesLoaded = true;
         notesDirty = false;
         try {
             File f = noteFile();
             if (f != null && f.exists()) f.delete();
         } catch (Throwable t) {
-            // ignore
         }
     }
 
-    // ---------------------------------------------------------------- internals
-
-    /** A track's artwork as both things the cache needs: the picture, and the file it came in. */
     static final class Src {
         Bitmap bmp;                            // the capped, centre-cropped square
         byte[] raw;                            // the source file's own bytes, untouched
     }
 
+    /** A file that did not read: neither a cover nor "no cover", so nothing is written down. */
+    private static final Src UNREAD = new Src();
+
     /**
-     * Read a track's artwork: the tags first, then the external cover files.
-     *
-     * This is stock's {@code Other.getAlbumCover} unrolled, for one reason — that method decodes the
-     * embedded bytes and drops them, and the bytes are exactly what decides whether anything needs
-     * re-compressing at all. Cost is unchanged: the same single {@code setDataSource}, the same
-     * sampling rule ({@code Art.sample} is a transcription of stock's), and the external-file
-     * fallback that Art injects into stock's null-return path is done here explicitly instead.
-     *
-     * {@link #SIZE} caps the picture rather than defining it. {@code Ipp.square} centre-crops the
-     * source's largest square, whose side is {@code min(w, h)} — ask it for exactly that side and
-     * the picture is not resampled at all, only cropped: "keep a small cover at its own resolution".
+     * A track's artwork — the tag first, then the external {@code cover.*}/{@code folder.*} —
+     * keeping the BYTES: they decide whether it needs re-compressing at all.
      */
     private static Src read(String path) {
-        byte[] raw = bytes(path);
-        if (raw == null || raw.length == 0) return null;
+        Meta.Info i = Meta.read(path, true);
+        byte[] raw = i.art != null && i.art.length > 0 ? i.art : external(path);
+        if (raw == null || raw.length == 0) return i.ok ? null : UNREAD;
         Bitmap bmp = capped(raw);
         if (bmp == null) return null;
         Src s = new Src();
         s.bmp = bmp;
         s.raw = raw;
         return s;
-    }
-
-    /** The artwork's own bytes: the tag first, then the external {@code cover.*}/{@code folder.*}. */
-    private static byte[] bytes(String path) {
-        byte[] b = embedded(path);
-        if (b != null && b.length > 0) return b;
-        return external(path);
-    }
-
-    private static byte[] embedded(String path) {
-        return Meta.art(path);
     }
 
     private static byte[] readAll(File f) throws IOException {
@@ -701,12 +817,14 @@ public final class BigCover {
             o.inJustDecodeBounds = false;
             Bitmap b = BitmapFactory.decodeByteArray(raw, 0, raw.length, o);
             return square(b);
+        } catch (OutOfMemoryError e) {
+            throw e;                               // not an answer about the picture
         } catch (Throwable t) {
             return null;
         }
     }
 
-    /** The same for a decoded bitmap: already a square at or under the cap means nothing to do. */
+    /** The largest centred square, cropped at the source's own size up to the cap. */
     private static Bitmap square(Bitmap b) {
         if (b == null) return null;
         int w = b.getWidth();
@@ -718,12 +836,7 @@ public final class BigCover {
         return sq == null ? b : sq;
     }
 
-    /**
-     * Whether two covers are the same picture. {@code sameAs} answers false for bitmaps of
-     * different sizes, which is what we want here — a track whose artwork is a different resolution
-     * from the album's representative is a different picture as far as the cache is concerned, and
-     * gets an entry of its own.
-     */
+    /** A different resolution is a different picture here. */
     private static boolean same(Bitmap a, Bitmap b) {
         try {
             return a != null && b != null && a.sameAs(b);
@@ -732,21 +845,33 @@ public final class BigCover {
         }
     }
 
-    private static void store(String key, Src s) {
+    /** False when nothing reached the disk — an encode that ran out of memory included. */
+    private static boolean store(String key, Src s, Walk w) {
+        return store(key, s, w, true);
+    }
+
+    /** {@code keep} false writes the file and leaves memory as it was, for {@link #trackFree}. */
+    private static boolean store(String key, Src s, Walk w, boolean keep) {
         try {
-            if (s == null || s.bmp == null) return;
-            byte[] out = fit(s);
-            if (out == null) return;
-            if (write(key, out)) mem.put(key, s.bmp);
+            if (s == null || s.bmp == null) return false;
+            byte[] out = fit(s, w);
+            if (out == null) return false;
+            long t0 = System.nanoTime();
+            boolean ok = write(key, out);
+            if (w != null) w.writeNs += System.nanoTime() - t0;
+            if (!ok) return false;
+            if (keep) mem.put(key, s.bmp);
+            return true;
         } catch (Throwable t) {
-            // an unwritable cache is not worth failing the cover for
+            return false;
         }
     }
 
-    /** The bytes onto disk under one key; nothing else. */
+    /** A half-written file is deleted: it would pass for a cover. */
     private static boolean write(String key, byte[] out) {
+        File f = null;
         try {
-            File f = file(key);
+            f = file(key);
             if (f == null) return false;
             FileOutputStream os = new FileOutputStream(f);
             try {
@@ -756,58 +881,88 @@ public final class BigCover {
             }
             return true;
         } catch (Throwable t) {
+            try { if (f != null) f.delete(); } catch (Throwable e) { }
             return false;
         }
     }
 
     /**
-     * The bytes to put on disk.
-     *
-     * A source that already fits {@link #LIMIT} is written as it is, whatever its pixel size:
-     * re-encoding it could only take quality away, and it cannot make the file smaller than the
-     * budget it already meets. The pixel cap is applied when it is read back instead ({@link #peek}
-     * decodes with sampling and crops), so a big-but-light cover costs nothing extra in memory.
-     * JPEG only — a PNG source is re-encoded, so the cache never holds anything but JPEG.
-     *
-     * Otherwise: the highest quality in {@code [Q_MIN, Q_MAX]} whose output still fits. Because the
-     * search takes the largest one that fits, the winner is also the one that lands closest to the
-     * limit from below — "the smaller the gap, the higher the quality" falls out of it rather than
-     * being a separate rule. Binary search, so five encodes at most.
-     *
-     * The two limits can conflict on a very detailed cover, and then the QUALITY floor wins: the
-     * file is allowed over 25 KB rather than the picture allowed under Photoshop 65.
+     * A JPEG that fits {@link #LIMIT} verbatim; otherwise the highest quality that fits, by a search
+     * that brackets it. On a conflict the QUALITY floor wins over the weight.
      */
-    private static byte[] fit(Src s) {
+    private static byte[] fit(Src s, Walk w) {
         if (s.raw != null && s.raw.length <= LIMIT && isJpeg(s.raw)) return s.raw;
 
+        // A search over [lo, hi] for the highest quality that fits, as a binary search would find
+        // it; only the next probe is chosen differently — where the weights seen so far put the
+        // limit (ln size is close to linear in ln of libjpeg's table scale, 200 - 2q).
         byte[] best = null;
+        byte[] atMin = null;
+        int bestQ = 0;
         int lo = Q_MIN;
         int hi = Q_MAX;
+        int q = lastQ;
+        if (q < Q_MIN || q > Q_MAX) q = (Q_MIN + Q_MAX) >> 1;
+        double lnLimit = Math.log(limit());
+        double xa = 0, ya = 0, xb = 0, yb = 0;
+        int points = 0;
         while (lo <= hi) {
-            int mid = (lo + hi + 1) >> 1;
-            byte[] out = encode(s.bmp, mid);
+            if (q < lo) q = lo;
+            if (q > hi) q = hi;
+            byte[] out = encode(s.bmp, q, w);
             if (out == null) break;
             if (out.length <= LIMIT) {
                 best = out;
-                lo = mid + 1;
+                bestQ = q;
+                lo = q + 1;
             } else {
-                hi = mid - 1;
+                if (q == Q_MIN) atMin = out;
+                hi = q - 1;
             }
+            xa = xb;
+            ya = yb;
+            xb = Math.log(200 - 2 * q);
+            yb = Math.log(out.length);
+            points++;
+            double slope = SLOPE;
+            if (points > 1 && xb != xa) {
+                double k = (yb - ya) / (xb - xa);
+                if (k < 0) slope = k;
+            }
+            double scale = Math.exp(xb + (lnLimit - yb) / slope);
+            int m = (int) Math.ceil(scale);       // ints: a round double literal does not assemble
+            q = m >= 200 ? Q_MIN : (200 - m) >> 1;
         }
-        return best != null ? best : encode(s.bmp, Q_MIN);
+        byte[] res = best != null ? best : atMin != null ? atMin : encode(s.bmp, Q_MIN, w);
+        if (best != null) lastQ = bestQ;
+        return res;
     }
 
-    private static byte[] encode(Bitmap b, int quality) {
+    /** d(ln size)/d(ln scale) before two probes have measured it. */
+    private static final double SLOPE = -0.6;
+
+    /** Not a compile-time constant, which would fold into a round double literal. */
+    private static int limit() {
+        return LIMIT;
+    }
+
+    /** The quality the last re-encoded cover settled on; shared by the workers, only a guess. */
+    private static volatile int lastQ;
+
+    private static byte[] encode(Bitmap b, int quality, Walk w) {
+        long t0 = System.nanoTime();
         try {
             ByteArrayOutputStream out = new ByteArrayOutputStream(LIMIT);
             b.compress(Bitmap.CompressFormat.JPEG, quality, out);
             return out.toByteArray();
         } catch (Throwable t) {
             return null;
+        } finally {
+            if (w != null) { w.probes++; w.encodeNs += System.nanoTime() - t0; }
         }
     }
 
-    /** SOI + the start of the first marker — enough to tell a JPEG from a PNG or a WebP. */
+    /** SOI + the start of the first marker. */
     private static boolean isJpeg(byte[] b) {
         return b.length > 3 && (b[0] & 0xFF) == 0xFF && (b[1] & 0xFF) == 0xD8 && (b[2] & 0xFF) == 0xFF;
     }
@@ -815,7 +970,41 @@ public final class BigCover {
     private static File file(String key) {
         File d = dir();
         if (d == null) return null;
-        return new File(d, Integer.toHexString(key.hashCode()) + "-" + key.length() + SUFFIX);
+        return new File(d, name(key));
+    }
+
+    private static String name(String key) {
+        return Integer.toHexString(key.hashCode()) + "-" + key.length() + SUFFIX;
+    }
+
+    /**
+     * Covers and notes of no path or folder in {@code keep} ({@link Stale.Keys#of}): their weight,
+     * gone when {@code drop}.
+     */
+    static long prune(Stale.Keys keep, Set folders, boolean drop) {
+        return Stale.files(dir(), keep, SUFFIX, false, drop) + pruneNotes(keep, folders, drop);
+    }
+
+    private static synchronized long pruneNotes(Stale.Keys keep, Set folders, boolean drop) {
+        noteLoad();
+        long n = 0L;
+        ArrayList gone = new ArrayList();
+        Iterator it = notes.entrySet().iterator();
+        while (it.hasNext()) {
+            Map.Entry e = (Map.Entry) it.next();
+            String k = (String) e.getKey();
+            boolean live = k.startsWith(SIG) ? folders.contains(k.substring(SIG.length()))
+                    : keep.has(Stale.Keys.of(k));
+            if (live) continue;
+            gone.add(k);
+            n += Stale.line(k, String.valueOf(e.getValue()));
+        }
+        if (drop && !gone.isEmpty()) {
+            for (int i = 0; i < gone.size(); i++) notes.remove(gone.get(i));
+            notesDirty = true;
+            noteSave();
+        }
+        return n;
     }
 
     private static File dir() {
@@ -835,7 +1024,6 @@ public final class BigCover {
                     }
                 }
             } catch (Throwable t) {
-                // nothing to do
             }
         }
         return d;

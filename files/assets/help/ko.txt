@@ -14,9 +14,6 @@
 
 [[tools]] 도구
 
-[reboot] 재부팅
-기기를 다시 시작합니다.
-
 [cache] 라이브러리 캐시
 라이브러리를 캐시에 저장합니다.
 
@@ -30,32 +27,80 @@
 
 가장 최근 백업 다섯 개가 유지됩니다. 불러오기 후에는 플레이어가 재시작됩니다.
 
+[m3u_import] M3U 재생 목록 가져오기
+메모리 카드 루트의 /Playlists/ 폴더에 있는 .m3u 및 .m3u8 파일을 보여 주며, 선택한 파일마다 재생 목록이 만들어집니다. 곡 순서는 파일 순서를 따릅니다. 곡은 경로로 찾고, 경로가 맞지 않으면 파일 이름으로 찾습니다.
+
+같은 이름의 재생 목록이 이미 있으면 바꾸기, 없는 곡 추가, 새로 만들기 중에서 고를 수 있습니다. {app:favorites}에서 내보낸 파일은 다시 {app:favorites}에 들어갑니다.
+
+마지막에 라이브러리에서 찾지 못한 모든 곡의 파일 이름이 화면에 표시됩니다.
+
+내보내려면 재생 목록 위에서 위쪽 버튼을 길게 누르고 "m3u로 내보내기"를 선택하세요.
+
+내보낸 재생 목록이 PC의 어느 위치에서든 열리게 하려면 컴퓨터에 있는 음악 라이브러리의 경로(예: C:\Music)를 지정해야 합니다. 가져올 때 플레이어가 경로를 제안합니다. 플레이어에서 바로 수정하거나 나중에 /better-Y/music_path.txt 파일에서 수정할 수 있습니다. 폴더 구조는 플레이어와 PC에서 같아야 합니다.
+
 [log] 진단 로그 저장
 오류 보고에 첨부할 수 있도록 메모리 카드의 /better-Y/logs/ 폴더에 진단 보고서를 저장합니다.
 
+[menu_tip]
+* 닫기
+* 다시 표시 안 함
+각 메뉴 항목에서 상단 버튼을 길게 누르면 작동 방식에 대해 자세히 알아볼 수 있습니다.
+
+[themes_tip]
+* 닫기
+* 다시 표시 안 함
+현재 설정을 better-Y.json 파일에 저장할 수 있으며, 이 파일은 선택한 테마의 폴더에 생성됩니다.
+
+저장하려면 원하는 테마에서 상단 버튼을 길게 누르고 "설정 저장"을 선택하세요.
+---
+다음 설정이 저장됩니다:
+
+현재 재생 중: 스타일("앨범 아트 기울이기" 제외).
+메뉴: 스타일, 상태 표시줄 스타일 및 텍스트 색상.
+화면 보호기: 스타일("밝기" 제외).
+키음: 소리.
+---
+화면 보호기 배경(screensaver.*), USB 화면 배경(usb.*), better-Y 아이콘(better-Y.*)을 추가하려면 해당 파일 이름의 이미지를 테마 폴더에 넣으세요.
+
+지원 형식: *.png, *.jpg, *.jpeg.
+---
+스크롤 휠 소리 파일도 직접 사용할 수 있습니다.
+"key-tone.*" 파일을 테마 폴더에 넣은 다음, 설정 - 키음에서 소리 - 테마를 선택하고 테마 설정을 저장하세요.
+
+지원 형식: *.mp3, *.ogg, *.wav.
+
 [[player]] 현재 재생 중
+
+[np_style] 스타일
 
 [icon_tint] 아이콘 색상
 * 밝게
 * 어둡게
 * 테마 색상
-플레이어의 인터랙티브 버튼 색상을 정합니다.
 
 [text_tint] 텍스트 색상
 * 밝게
 * 어둡게
 * 테마 색상
-플레이어의 텍스트 줄과 시간 표시 색상을 정합니다.
 
 [lyrics_tint] 가사 색상
 * 밝게
 * 어둡게
 * 테마 색상
-플레이어의 가사 색상을 정합니다.
+
+[box_tint] 텍스트 상자 색상
+* 밝게
+* 어둡게
+* 테마 색상
+* 꺼짐
 
 [cover_tilt] 앨범 아트 기울이기
-@img cover_tilt_on.png {On}
-@img cover_tilt_off.png {Off}
+
+[np_blank]
+* 제목
+* 아티스트
+* 앨범
+* 가사
 
 [top_hold] 상단 버튼 길게 누르기 (음악)
 * 가사
@@ -82,10 +127,12 @@
 플레이어의 아티스트 줄에서만 적용됩니다.
 
 숨겨진 아티스트는 "{row:feat_in_title}" 설정을 켜서 제목으로 옮길 수 있습니다.
+
+켜면 "{row:player_album_artist}" 설정이 꺼집니다.
 @img first_artist_only_off.png {Off}
 @img first_artist_only_on.png {On}
 
-[feat_in_title] 숨긴 아티스트를 제목으로 이동
+[feat_in_title] 숨겨진 아티스트를 제목으로 이동
 "{row:first_artist_only}" 설정이 숨긴 아티스트를 "feat." 뒤에 붙여 곡 제목으로 옮깁니다. 예를 들어:
 
 "Tree, Shelf Nunny, Lena Kuhn — People"
@@ -99,6 +146,43 @@
 @img first_artist_only_on.png {On} + {Off}
 @img feat_in_title_on.png {On} + {On}
 
+[player_album_artist] 아티스트 대신 앨범 아티스트 표시
+플레이어의 아티스트 줄에 곡의 아티스트 대신 앨범 아티스트(Album Artist)를 표시합니다. 앨범에 Album Artist가 없으면 곡의 첫 번째 아티스트가 표시됩니다. 예를 들어 "Tree"의 앨범에서:
+
+"Tree, Shelf Nunny, Lena Kuhn — People"
+는
+"Tree — People"
+이 됩니다.
+
+플레이어의 아티스트 줄에서만 작동합니다.
+
+켜면 "{row:first_artist_only}" 설정이 꺼집니다.
+@img first_artist_only_off.png {Off}
+@img first_artist_only_on.png {On}
+
+[various_artist] "Various Artists"를 아티스트로 대체
+Album Artist가 "Various" 또는 "Various Artists"이면 대신 곡의 첫 번째 아티스트를 표시합니다. 예를 들어 컴필레이션에서:
+
+"Various Artists — Lose Yourself"
+는
+"Eminem — Lose Yourself"
+이 됩니다.
+
+[aa_feat_in_title] 피처링 아티스트를 제목으로 이동
+아티스트 줄에 표시되지 않는 곡의 아티스트를 "feat." 뒤에 붙여 곡 제목으로 옮깁니다. 예를 들어 "Tree"의 앨범에서:
+
+"Tree, Shelf Nunny, Lena Kuhn — People"
+는 이 설정이 꺼져 있으면
+"Tree — People"
+
+켜져 있으면
+"Tree — People (feat. Shelf Nunny, Lena Kuhn)"
+이 됩니다.
+
+제목에 이미 그중 한 명이 있거나 아티스트 줄에 "Various" 또는 "Various Artists"가 표시되면 아무것도 추가하지 않습니다.
+@img first_artist_only_on.png {Off}
+@img feat_in_title_on.png {On}
+
 [artist_album_scroll] 긴 아티스트/앨범 스크롤
 * 꺼짐
 * 아티스트
@@ -109,6 +193,8 @@
 긴 곡 제목은 이 설정과 상관없이 항상 흐릅니다.
 
 [[menu]] 메뉴
+
+[menu_look] 스타일
 
 [alpha_scroll] 가나다순 빠른 스크롤
 휠을 일정 횟수 돌리면 시작되어 첫 글자를 기준으로 목록을 건너뜁니다.
@@ -132,12 +218,106 @@
 [follow_idle if follow_playing] 복귀 지연 (초)
 휠을 마지막으로 돌린 뒤 몇 초 후에 선택이 지금 재생 중인 곡으로 돌아갈지 정합니다.
 
-[fixed_menu_pad] 수정된 메뉴 여백
-기본 메뉴와 설정의 여백을 수정합니다.
+[loop_scroll] 목록 순환
+목록의 끝이나 처음에 이르면 선택이 반대쪽으로 넘어갑니다. 모든 목록, 메뉴, 갤러리, 대화 상자에서 작동합니다.
 
-배경이 원본 여백에 맞춰 그려진 테마에서는 끄는 것이 좋습니다. 기본 제공되는 Melody Munchkin이 그렇습니다.
-@img fixed_menu_pad_off.png {Off}
-@img fixed_menu_pad_on.png {On}
+[animations] 애니메이션 사용
+
+[anim_nav] 탐색
+메뉴 화면이 iPod처럼 밀려 바뀝니다. 안으로 들어갈 때는 오른쪽에서 왼쪽으로, 돌아갈 때는 왼쪽에서 오른쪽으로 움직입니다. 그림 옆의 목록은 화면 절반 안에서 움직이고, 전체 화면 목록은 오른쪽에서 들어와 절반을 밀어냅니다.
+
+[anim_scroll] 스크롤
+
+[menu_style] 스타일
+* 기본
+* 균등
+* 단순
+
+[fixed_menu_pad] 여백
+* 기본
+* 여백 없음
+
+[preview_text] 미리보기 텍스트 색상
+* 밝게
+* 어둡게
+* 테마 색상
+
+[main_menu] 메인 메뉴
+
+[mm_now] 지금 재생 중
+
+[mm_music] 음악
+
+[mm_coverflow] Cover Flow
+
+[mm_songs] 모든 노래
+
+[mm_playlists] 재생 목록
+
+[mm_artists] 아티스트
+
+[mm_albums] 앨범
+
+[mm_genres] 장르
+
+[mm_folders] 폴더
+
+[mm_search] 검색
+
+[mm_videos] 동영상
+
+[mm_video_all] 모든 동영상
+
+[mm_video_playlist] 재생 목록
+
+[mm_video_folders] 폴더
+
+[mm_video_search] 검색
+
+[mm_audiobooks] 오디오북
+
+[mm_book_all] 모든 오디오북
+
+[mm_book_artists] 아티스트
+
+[mm_book_albums] 앨범
+
+[mm_book_folders] 폴더
+
+[mm_bookmarks] 북마크
+
+[mm_ebook] 전자책
+
+[mm_photos] 사진
+
+[mm_fm] FM 라디오
+
+[mm_bluetooth] 블루투스
+
+[album_artists] 앨범 아티스트
+"Album Artist" 태그가 없는 앨범은 앨범에서 가장 자주 나오는 "Artist" 태그의 첫 번째 아티스트를 사용합니다.
+
+[status_bar] 상태 표시줄
+
+[bar_text] 상태 표시줄 텍스트 색상
+* 밝게
+* 어둡게
+* 테마 색상
+메뉴 제목과 배터리 잔량(%)의 색상을 설정합니다.
+
+[bar_icons] 아이콘 표시
+* 메뉴 제목
+* 재생
+* 헤드폰
+* 블루투스
+* 배터리
+* 배터리 백분율
+상태 표시줄에 표시할 아이콘을 고릅니다.
+
+[bar_style] 스타일
+* 기본
+* 가운데
+가운데는 아이콘을 왼쪽 끝으로, 섹션 제목을 가운데로 옮깁니다. 배터리는 오른쪽에 남습니다.
 
 [[metadata]] 메타데이터
 
@@ -148,8 +328,11 @@
 파일 이름 대신 메타데이터의 오디오북 제목을 표시합니다.
 
 [album_year] 앨범 이름에 발매 연도
-앨범 이름에 발매 연도를 표시합니다. 예를 들어:
+앨범 이름에 발매 연도를 표시합니다:
 "The Eminem Show (2002)"
+
+앨범에 발매 연도가 다른 곡이 있으면 가장 이른 연도와 가장 늦은 연도를 대시로 이어 표시합니다:
+"Dirt (1992 - 1993)"
 
 [track_numbers] 앨범 내 메타데이터의 트랙 번호
 앨범 안에서 메타데이터의 트랙 번호를 표시합니다.
@@ -216,9 +399,98 @@
 
 이 설정을 끄면 재생목록과 눌러 둔 좋아요는 삭제되지 않고 숨겨질 뿐입니다.
 
+[center_hold] 가운데 버튼을 길게 눌러 전원 끄기
+가운데 버튼을 5초 동안 누르고 있으면 확인 없이 기기가 꺼집니다.
+---
+전원이 꺼지기 2초 전에 알림이 나타납니다. 알림이 보이는 동안 버튼을 놓으면 전원 끄기가 취소됩니다.
+
+화면을 잠그려면 알림이 나타나기 전에 가운데 버튼을 눌렀다 놓으세요.
+
 [kb_lang2] 키보드 보조 언어
 * 꺼짐
 * 러시아어
 화면 키보드에 두 번째 자판을 추가합니다.
 
 전환하려면 위쪽 버튼을 길게 누르십시오.
+
+[screensaver] 화면 보호기
+
+[ss_on] 화면 보호기 사용
+설정에서 정한 절전 시간이 지나면 화면 잠금 대신 화면 보호기가 나타납니다.
+
+[ss_style] 스타일
+* 시계, 왼쪽
+* 시계, 가운데
+* 시계, 오른쪽
+* 시계와 날짜, 왼쪽
+* 시계와 날짜, 가운데
+* 시계와 날짜, 오른쪽
+* 재생 중인 곡, 왼쪽
+* 재생 중인 곡, 가운데
+* 재생 중인 곡, 오른쪽
+
+[ss_bright] 밝기
+
+[ss_off] 화면 끄기 시간
+* 15초
+* 30초
+* 45초
+* 1분
+* 2분
+* 3분
+* 4분
+* 5분
+* 10분
+* 15분
+* 사용 안 함
+화면이 꺼지기 전까지 화면 보호기가 유지되는 시간입니다.
+
+[ss_charging] 충전 중 화면 끄지 않기
+
+[ss_background] 배경
+* 밝게
+* 어둡게
+* 배경화면
+
+[ss_tint] 배경 색조
+* 끄기
+* 밝게
+* 어둡게
+* 테마 색상
+
+[ss_clock_color] 시계 색상
+* 밝게
+* 어둡게
+* 테마 색상
+
+[ss_text_color] 텍스트 색상
+* 밝게
+* 어둡게
+* 테마 색상
+
+[ss_tip]
+* 닫기
+* 다시 표시 안 함
+카테고리를 바꾸려면 왼쪽과 오른쪽 버튼을 사용하세요.
+
+값을 고르려면 휠을 사용하세요.
+
+변경 사항을 저장하려면 위쪽 버튼을 눌러 메뉴에서 나가세요.
+
+[[coverflow]] Cover Flow
+
+[flow_count] 화면의 앨범 수
+* 3
+* 5
+* 7
+
+[flow_group] 아티스트별로 묶기
+
+[flow_year] 발매 연도 표시
+* 꺼짐
+* 아티스트 옆
+* 앨범 옆
+
+[flow_start] 시작 시 표시
+* 마지막 위치
+* 재생 중인 앨범

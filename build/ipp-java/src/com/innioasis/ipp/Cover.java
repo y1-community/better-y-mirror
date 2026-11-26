@@ -1,6 +1,7 @@
 package com.innioasis.ipp;
 
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.LinearGradient;
 import android.graphics.Matrix;
@@ -9,9 +10,11 @@ import android.graphics.PorterDuff;
 import android.graphics.PorterDuffXfermode;
 import android.graphics.Rect;
 import android.graphics.Shader;
+import android.graphics.drawable.BitmapDrawable;
 import android.view.ViewGroup;
 import android.widget.ImageView;
 
+import com.innioasis.y1.R;
 import com.innioasis.y1.Y1Application;
 import com.innioasis.y1.base.BasePlayerActivity;
 import com.innioasis.y1.databinding.ActivityMusicPlayerBinding;
@@ -20,61 +23,25 @@ import com.innioasis.y1.view.ReflectImageView;
 import java.lang.ref.WeakReference;
 
 /**
- * The Now-Playing cover: its bitmap geometry, its 3D tilt and its reflection.
- *
- * The geometry lives here WITH the tilt, not in {@code Ipp}: {@link #fitCover} is memoised by
- * {@link #fitMemo}/{@link #fitPut}, and that memo is subtle — it keys on the SOURCE bitmap,
- * because the result's identity changes on every call — so it has to be readable next to its
- * only user.
- *
- * Now-Playing cover tilt.
- *
- * Stock applies the 3D look once, from {@code initView} via {@code coverBg.post{ … }}:
- * {@code setPivotX(0); setPivotY(getHeight()/3f); setRotationY(20f)}. But {@code cover_bg} starts
- * out {@code android:visibility="gone"} — it is only shown once a cover has been loaded — so when
- * that posted runnable happens to run while the view is still GONE, {@code getHeight()} is **0**:
- * the pivot lands on the top edge and the cover renders visibly wrong (the "broken" cover that only re-applying the
- * theme puts right, because that re-creates the Activity with different timing).
- *
- * {@link #tilt} does the same maths but falls back to the height declared in the layout
- * (345dp, already in px on the LayoutParams at inflation time), so it is correct no matter
- * whether the view has been measured yet. It is called every time the cover is put on screen.
+ * The Now-Playing cover: its bitmap geometry, its 3D tilt and its reflection. Stock tilts once
+ * from a posted runnable that can run while {@code cover_bg} is still GONE and 0 high, putting the
+ * pivot on the top edge; {@link #tilt} falls back to the declared height and runs every time the
+ * cover is shown.
  */
 public final class Cover {
 
     private static final float ROTATION = 20.0f;
 
-    // ---- the look: tilted with a reflection, or flat --------------------------------------------
-
-    /**
-     * "Tilt the cover", [Now Playing]. On by default — that is the stock, iPod-like look.
-     *
-     * It is the ROTATION alone. The reflection stays either way (the user's call):
-     * a cover drawn straight on still reads as standing on a reflective surface, and the two
-     * views of the player disagreed without it — the placeholder shown for a track with no
-     * artwork was never tilted, so turning the setting off would have changed nothing there
-     * except taking its reflection away.
-     */
+    /** "Tilt the cover", [Now Playing]: the rotation alone, the reflection stays either way. */
     public static final String KEY_TILT = "cover_tilt";
 
-    /** The look the memoised bitmaps below were built for: -1 = never asked, 0 = flat, 1 = tilted. */
+    /** The look the memoised bitmaps were built for: -1 = never asked, 0 = flat, 1 = tilted. */
     private static int look = -1;
 
     /**
-     * True while the cover is drawn straight on: no rotation, and none of the things the rotation
-     * is the reason for — the transparent frame, and the full width of the box (see {@link #inset}).
-     *
-     * Asking is also what keeps the caches honest. {@link #fitCover}'s result carries
-     * {@link #softEdge}'s frame under the rotation and does not without it, so it is a bitmap built
-     * for ONE of the two looks — and the memo is keyed on the SOURCE bitmap, which does not change
-     * when the setting does, so it would go on serving the look the user has just left. Both memos
-     * are dropped here, at the one place that can see the change, and every reader calls this
-     * before consulting its own. The references are dropped, never recycled: one of those bitmaps
-     * is on screen.
-     *
-     * What is on DISK is unaffected and needs no second copy: {@code BigCover} stores the cover
-     * itself, which is the same picture either way — the tilt is a transform on the view, and the
-     * reflection is built at display time.
+     * True while the cover is drawn flat. Asking also drops both memos when the look changes: they
+     * key on the SOURCE bitmap, which does not change with the setting. Every reader asks first.
+     * Dropped, never recycled — one is on screen.
      */
     public static boolean flatCover() {
         try {
@@ -88,23 +55,15 @@ public final class Cover {
             }
             return now == 0;
         } catch (Throwable t) {
-            return false;                       // the stock look is the safe answer
+            return false;
         }
     }
 
-    /**
-     * Width the mirrored half is built at. The cover itself stays at its full 300px — only the
-     * reflection is halved, because it is mirrored, faded out and nobody reads detail in it.
-     * Quarter the pixels to allocate and blit.
-     */
+    /** The width the faded mirror is built at; the cover itself stays full size. */
     private static final int REFL_W = 150;
 
-    // ---- memo 1: fitCover ---------------------------------------------------------------------
-    // fitCover allocates a fresh bitmap every call (softEdge's transparent frame), so the object
-    // identity of the player cover changed on every open and nothing downstream could be memoised.
-    // Its INPUT, however, is stable: it comes straight out of BigCover's in-memory table, which
-    // hands back the very same Bitmap for the same track. Keying on that input makes the whole
-    // chain (fit -> reflect) a cache hit when the same song is opened again.
+    // fitCover's memo, keyed on its INPUT — BigCover hands back the same Bitmap for a track, while
+    // the output is new on every call.
     private static WeakReference fitIn;
     private static Bitmap fitOut;
 
@@ -116,7 +75,7 @@ public final class Cover {
         return fitOut;
     }
 
-    /** Remember a {@link #fitCover} result; returns it unchanged so the caller can tail-return. */
+    /** Remember a {@link #fitCover} result; returns it. */
     private static Bitmap fitPut(Bitmap in, Bitmap out) {
         if (in != null && out != null) {
             fitIn = new WeakReference(in);
@@ -125,28 +84,69 @@ public final class Cover {
         return out;
     }
 
-    // ---- memo 2: the reflection ---------------------------------------------------------------
     private static WeakReference reflIn;
+    private static int reflGen;
     private static Bitmap reflOut;
 
     /**
-     * The cover + its mirrored reflection, i.e. what stock's private {@code DoReflection} built —
-     * but memoised and with the mirror rendered at {@link #REFL_W}.
-     *
-     * Stock rebuilt this on every {@code setImageBitmap}: a full-size ARGB_8888 composite
-     * (300x450, ~550 KB), a full-resolution mirrored copy of the lower half (~180 KB), two blits
-     * and a gradient rect with an xfermode — all synchronous, before the player's first frame.
-     * Measured cost of the cover path on this device: ~75 ms (a coverless track opened in ~195 ms,
-     * the same track with a 300x300 cover in ~271 ms).
-     *
-     * Returning null means "not handled" — the caller falls back to the stock path.
+     * Composites off the screen; the next cover is drawn into one. Two: Cover Flow's way back
+     * flies two at once (the track's cover fading into the album's) and gives both back.
      */
-    public static Bitmap reflect(Bitmap src) {
+    private static Bitmap spare, spare2;
+
+    /** A composite someone outside the player keeps: never handed out for redrawing. */
+    private static Bitmap held;
+
+    private static void give(Bitmap b) {
+        if (b == null || b == spare || b == spare2) return;
+        if (spare == null) spare = b;
+        else if (spare2 == null) spare2 = b;
+        else spare = b;
+    }
+
+    /** A spare of this size, taken out of the pair; null when neither fits. */
+    private static Bitmap take(int w, int h) {
+        Bitmap b = spare;
+        if (b != null && !b.isRecycled() && b.isMutable() && b.getWidth() == w && b.getHeight() == h) {
+            spare = null;
+            return b;
+        }
+        b = spare2;
+        if (b != null && !b.isRecycled() && b.isMutable() && b.getWidth() == w && b.getHeight() == h) {
+            spare2 = null;
+            return b;
+        }
+        return null;
+    }
+
+    /** Keep this {@link #reflect} result out of the buffers that get redrawn. */
+    public static synchronized void hold(Bitmap b) {
+        held = b;
+        if (spare == b) spare = null;
+        if (spare2 == b) spare2 = null;
+    }
+
+    /** A {@link #reflect} result its keeper no longer needs: the next composite is drawn into it. */
+    public static synchronized void release(Bitmap b) {
+        if (b == null || b == blankPic || b.isRecycled() || !b.isMutable()) return;
+        if (held == b) held = null;
+        if (reflOut == b) {
+            reflOut = null;
+            reflIn = null;
+        }
+        give(b);
+    }
+
+    /**
+     * Stock's {@code DoReflection}, memoised and with a smaller mirror — stock rebuilt it on every
+     * {@code setImageBitmap}, before the first frame. Null = not handled, stock's path runs.
+     */
+    public static synchronized Bitmap reflect(Bitmap src) {
         try {
             if (src == null) return null;
-            // Asked before the memo, because it is what empties it when the look changes.
             flatCover();
-            if (reflIn != null && reflOut != null && reflIn.get() == src && !reflOut.isRecycled()) {
+            if (reflIn != null && reflOut != null && reflIn.get() == src
+                    && reflGen == src.getGenerationId() && !reflOut.isRecycled()) {
                 return reflOut;
             }
             int w = src.getWidth();
@@ -155,33 +155,46 @@ public final class Cover {
             int half = h / 2;
             if (half <= 0) return null;
 
-            Bitmap out = Bitmap.createBitmap(w, h + half, Bitmap.Config.ARGB_8888);
+            // Redrawn in place where the size allows: a fresh composite per track is what fills
+            // the heap during a run of track changes.
+            Bitmap out = take(w, h + half);
+            if (out != null) {
+                out.eraseColor(0);
+            } else {
+                out = Bitmap.createBitmap(w, h + half, Bitmap.Config.ARGB_8888);
+            }
             Canvas c = new Canvas(out);
             c.drawBitmap(src, 0.0f, 0.0f, null);
+            mirror(c, src, w, h, flatCover() ? 0 : 2);
 
-            // Mirror the lower half, built small and stretched back over the full width.
-            float k = (w > REFL_W) ? ((float) REFL_W / (float) w) : 1.0f;
-            Matrix m = new Matrix();
-            m.preScale(k, -k);
-            Bitmap mir = Bitmap.createBitmap(src, 0, half, w, half, m, true);
-            Paint p = new Paint();
-            p.setFilterBitmap(true);
-            p.setAntiAlias(true);
-            c.drawBitmap(mir, null, new Rect(0, h, w, h + half), p);
-
-            // Same fade stock used: 0x70FFFFFF -> 0x00FFFFFF over the reflection, DST_IN.
-            Paint g = new Paint();
-            g.setShader(new LinearGradient(0.0f, h, 0.0f, h + half, 0x70FFFFFF, 0x00FFFFFF,
-                    Shader.TileMode.CLAMP));
-            g.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
-            c.drawRect(0.0f, h, w, h + half, g);
-
+            if (reflOut != held) give(reflOut);
             reflIn = new WeakReference(src);
+            reflGen = src.getGenerationId();
             reflOut = out;
             return out;
         } catch (Throwable t) {
-            return null;                        // fall back to the stock DoReflection
+            return null;
         }
+    }
+
+    /** The faded mirror of {@code src}'s lower half, under it on {@code c}; the side frame {@code f} stays out of it. */
+    private static void mirror(Canvas c, Bitmap src, int w, int h, int f) {
+        int half = h / 2;
+        float k = (w > REFL_W) ? ((float) REFL_W / (float) w) : 1.0f;
+        Matrix m = new Matrix();
+        m.preScale(k, -k);
+        Bitmap mir = Bitmap.createBitmap(src, f, half, w - 2 * f, half, m, true);
+        Paint p = new Paint();
+        p.setFilterBitmap(true);
+        p.setAntiAlias(true);
+        c.drawBitmap(mir, null, new Rect(f, h, w - f, h + half), p);
+
+        // stock's fade
+        Paint g = new Paint();
+        g.setShader(new LinearGradient(0.0f, h, 0.0f, h + half, 0x70FFFFFF, 0x00FFFFFF,
+                Shader.TileMode.CLAMP));
+        g.setXfermode(new PorterDuffXfermode(PorterDuff.Mode.DST_IN));
+        c.drawRect(0.0f, h, w, h + half, g);
     }
 
     public static void tilt(BasePlayerActivity a) {
@@ -196,70 +209,54 @@ public final class Cover {
                     (ViewGroup.MarginLayoutParams) v.getLayoutParams();
             if (lp == null) return;
             capture(lp);
+            shape(vb, v, lp, leftOf(lp));
+        } catch (Throwable t) {
+        }
+    }
 
-            // cover_bg2 -- the placeholder for a track with no artwork -- is not touched HERE:
-            // stock never tilted it, so the setting has nothing to do there, and its own box is
-            // set by blank() on a path that runs whether or not there is a cover.
-            //
-            // FIT_START in BOTH looks. The layout asks for centerCrop, which fits the composite
-            // exactly while the view is the width the layout gives it (both are 2:3) and starts
-            // cropping the moment either changes -- and both do below.
+    /**
+     * The cover's box, padding and tilt on {@code v}: {@code cover_bg} itself, or the placeholder
+     * put exactly where a cover stands ({@code left} is the cover's). FIT_START in both looks: the
+     * layout's centerCrop crops as soon as the box changes, and it does below.
+     */
+    private static void shape(ActivityMusicPlayerBinding vb, ReflectImageView v,
+                              ViewGroup.MarginLayoutParams lp, int left) {
+        try {
+            if (boxW <= 0 || boxH <= 0) return;
             boolean flat = flatCover();
-            int side = boxW - inset(vb, boxW, leftOf(lp));      // the width the cover is DRAWN at
+            int side = boxW - inset(vb, boxW, left);      // the width the cover is DRAWN at
             v.setScaleType(ImageView.ScaleType.FIT_START);
 
             if (flat) {
                 v.setRotationY(0.0f);
                 v.setPadding(0, 0, boxW - side, 0);
-                box(v, lp, boxW, boxH, topFor(vb, lp, side), leftOf(lp));
+                box(v, lp, boxW, boxH, topFor(vb, lp, side), left);
                 return;
             }
             v.setPadding(0, 0, 0, 0);
 
-            // The transform goes on FIRST, because the width below is measured off the matrix it
-            // produces rather than predicted (see tiltWidth).
+            // The transform goes on FIRST: tiltWidth measures its matrix.
             float h = v.getHeight();
             if (h <= 0) h = lp.height;          // not laid out yet (the view starts GONE)
             v.setPivotX(0.0f);
             if (h > 0) v.setPivotY(h / 3.0f);
             v.setRotationY(ROTATION);
 
-            // BOTH dimensions, and that is the whole of the first attempt's failure: the box is
-            // 2:3 and so is the picture, so a wider box alone changed nothing at all -- the fit
-            // stayed limited by the HEIGHT and the image went on being drawn at the width it
-            // always had — a widened box alone is invisible on the device. The box has
-            // to grow in proportion.
+            // BOTH dimensions: box and picture are 2:3, so a wider box alone is still fitted by
+            // the height and changes nothing.
             int w = tiltWidth(v, side);
             int nh = Math.round((float) w * boxH / boxW);
-            box(v, lp, w, nh, topFor(vb, lp, w), leftOf(lp));
-            if (nh > 0) v.setPivotY(nh / 3.0f);   // the box just changed; stock's rule, new height
+            box(v, lp, w, nh, topFor(vb, lp, w), left);
+            if (nh > 0) v.setPivotY(nh / 3.0f);   // stock's rule, new height
         } catch (Throwable t) {
-            // the tilt is cosmetic -- never let it take the player down
         }
     }
 
-    /**
-     * How much narrower than its box the flat cover is drawn, in pixels.
-     *
-     * The cover view OVERLAPS the info rows and always has. It sits at x = 10 and is 230
-     * wide, i.e. it ends at 240, while {@code music_info_ll} is 235 wide against a right margin of
-     * 10 and therefore begins at 235 — the last five pixels of the cover are behind the rows'
-     * translucent background (the rows are declared after it, so they are drawn on top). The tilt
-     * hides that: a 20° rotation about the left edge pulls the right-hand side back by about
-     * cos 20° of the width, so the tilted cover happens to end just short of the rows. Drawn
-     * straight on there is nothing to pull it back, and it runs under them.
-     *
-     * So the flat cover is drawn as wide as the space between the rows and the screen edge
-     * really allows, with the same margin on the right as the view has on the left. Read off the
-     * two views' own LayoutParams rather than written down as a number: they are the layout's, and
-     * a layout change has to move this with it. LayoutParams are resolved at inflation, so this
-     * needs no measure pass and is correct on the very first call.
-     */
-    /** The box {@code cover_bg} is declared with, read once before anything of ours changes it. */
+    /** The box {@code cover_bg} is declared with, read before anything of ours changes it. */
     private static int boxW;
     private static int boxH;
 
-    /** The box {@code cover_bg} is declared with, taken from whichever of the two runs first. */
+    /** Taken by whichever of tilt/blank runs first. */
     private static void capture(ViewGroup.MarginLayoutParams cover) {
         if (boxW <= 0 && cover != null && cover.width > 0) {
             boxW = cover.width;
@@ -276,57 +273,27 @@ public final class Cover {
         lp.height = h;
         lp.topMargin = top;
         lp.leftMargin = left;
-        // Both, and the START one is the one that counts: the layout declares
-        // android:layout_marginStart, which lives in a field of its own, and
-        // resolveLayoutDirection copies it over leftMargin on EVERY layout pass. Setting
-        // leftMargin alone is undone before it is ever used -- the placeholder stayed at its own
-        // 25 while the box grew to the cover's width, so it ran to the right instead of moving to
-        // where the cover starts.
+        // marginStart wins: it is copied over leftMargin on every layout pass
         lp.setMarginStart(left);
         v.setLayoutParams(lp);
     }
 
-    /**
-     * The left margin as DECLARED, which is not {@code leftMargin} here: with
-     * {@code layout_marginStart} in the XML that field stays 0 until the first layout resolves it,
-     * so reading it before then answers "flush with the screen's edge".
-     */
+    /** The left margin as DECLARED: {@code leftMargin} is 0 until the first layout. */
     private static int leftOf(ViewGroup.MarginLayoutParams lp) {
         int m = lp.getMarginStart();
         return m > 0 ? m : lp.leftMargin;
     }
 
     /**
-     * How wide the view has to be for the TILTED cover's right-hand edge to land where the flat
-     * one's does (a test, the user's call).
-     *
-     * The rotation is applied to the whole view, so there is no "edge" to move on its own: a
-     * point at local x is drawn foreshortened by the angle and then again by the perspective
-     * divide, so the view's own right edge is drawn well to the left of where it sits. That is why
-     * the tilted cover stands clear of the rows while the flat one runs up to them, and it is what
-     * "move the right edge" has to undo — by making the view wide enough that its edge lands where
-     * the flat cover's does.
-     *
-     * The projection is MEASURED, not predicted. The obvious closed form —
-     * {@code x·cos θ · d/(d + x·sin θ)}, solved for the width — needs the camera distance in the
-     * same units as the view's own coordinates, and {@code setCameraDistance}'s "depth pixels" are
-     * not those units. Predicting it with the documented default (1280 at this density) came out
-     * about twenty pixels short on the device. So the transform is applied first and then
-     * {@link android.view.View#getMatrix()} is asked what it does to a point: that matrix IS what
-     * the framework draws with, whatever the units are. It is monotonic in x, so one binary search
-     * finds the width whose edge lands on {@code target}, and no camera distance is set at all —
-     * the platform's own is left alone.
-     *
-     * The caller has to grow the box in PROPORTION, not just widen it. The declared box
-     * is 2:3 and so is the cover with its reflection, so the fit is limited by the height by a
-     * hair: widening the box alone leaves the picture drawn at exactly the width it was, and the
-     * change is invisible.
+     * The view width at which the TILTED cover's right edge lands where the flat one's does.
+     * MEASURED off {@link android.view.View#getMatrix()} by binary search: the closed form needs the
+     * camera distance in units the documentation gets wrong, and came out ~20 px short.
      */
     private static int tiltWidth(ReflectImageView v, int target) {
         try {
             if (target <= 0) return boxW;
             android.graphics.Matrix m = v.getMatrix();
-            if (m == null || m.isIdentity()) return boxW;   // nothing to compensate for
+            if (m == null || m.isIdentity()) return boxW;
             float y = v.getPivotY();                        // the row the rotation leaves alone
             float lo = target;
             float hi = target * 3.0f;
@@ -342,7 +309,7 @@ public final class Cover {
         }
     }
 
-    /** Where the view's transform actually puts local x — the framework's own answer. */
+    /** Where the view's transform puts local x. */
     private static float mapX(android.graphics.Matrix m, float x, float y) {
         float[] p = new float[] { x, y };
         m.mapPoints(p);
@@ -350,22 +317,9 @@ public final class Cover {
     }
 
     /**
-     * Where the cover's top edge belongs, as a top margin, so that the cover is centred against
-     * the block of rows beside it (the user's call, for the flat look and the tilted one alike).
-     *
-     * A margin, not a top padding. Padding can only push down, and the two looks want
-     * opposite directions: the flat cover (215) is a little shorter than the rows (222) and goes
-     * down about nine pixels, the tilted one (244) is taller and goes UP about five.
-     *
-     * {@code side} is the cover's own height, which is its drawn width — it is a square. For the
-     * tilted look that is the box's width, since the picture is fitted to it; the rotation is about
-     * Y, so it foreshortens the far side and leaves the near edge's height alone.
-     *
-     * The rows' height is asked of the view when it has been laid out and summed from its
-     * children's own params when it has not, because {@code tilt} is called before the first
-     * layout as well as after it and a number that changed between the two calls would be a
-     * visible jump. The two agree here: {@code music_info_ll} is a plain vertical chain of
-     * fixed-height rows.
+     * The top margin that centres the cover against the rows beside it — a margin, since the tilted
+     * cover moves UP. {@code side} is the cover's height (a square). Before the first layout the
+     * rows' height is summed from their params, so the two calls agree.
      */
     private static int topFor(ActivityMusicPlayerBinding vb,
                               ViewGroup.MarginLayoutParams lp, int side) {
@@ -373,7 +327,7 @@ public final class Cover {
             ViewGroup.MarginLayoutParams ip =
                     (ViewGroup.MarginLayoutParams) vb.musicInfoLl.getLayoutParams();
             int rows = rowsHeight(vb.musicInfoLl);
-            if (rows <= 0) return lp.topMargin;          // nothing to centre against; leave it
+            if (rows <= 0) return lp.topMargin;
             int top = ip.topMargin + (rows - side) / 2;
             return top > 0 ? top : 0;
         } catch (Throwable t) {
@@ -391,12 +345,16 @@ public final class Cover {
             ViewGroup.LayoutParams p = c.getLayoutParams();
             if (!(p instanceof ViewGroup.MarginLayoutParams)) return 0;
             ViewGroup.MarginLayoutParams m = (ViewGroup.MarginLayoutParams) p;
-            if (m.height <= 0) return 0;        // wrap_content: nothing to sum, wait for a layout
+            if (m.height <= 0) return 0;        // wrap_content: wait for a layout
             sum += m.height + m.topMargin;
         }
         return sum;
     }
 
+    /**
+     * How much narrower than its box the flat cover is drawn. The view overlaps the info rows; the
+     * tilt pulls its right side clear, flat it runs under them. Read off both views' LayoutParams.
+     */
     private static int inset(ActivityMusicPlayerBinding vb, int width, int left) {
         try {
             ViewGroup.MarginLayoutParams ip =
@@ -404,8 +362,7 @@ public final class Cover {
             int screen = vb.coverBg.getResources().getDisplayMetrics().widthPixels;
             int rowsLeft = screen - ip.rightMargin - ip.width;
             int room = rowsLeft - left - left;   // the gap, twice: to the screen and to the rows
-            // The width is passed in rather than read off the view: the tilted look widens the
-            // view, and asking it would then answer about a box of our own making.
+            // width passed in: the tilted look widens the view itself
             int pad = width - room;
             return pad > 0 ? pad : 0;
         } catch (Throwable t) {
@@ -414,27 +371,14 @@ public final class Cover {
     }
 
     /**
-     * {@code cover_bg2} — the placeholder shown for a track with no artwork — put in exactly the
-     * box a cover gets (the user's call).
-     *
-     * The layout gives it one of its own: 200 wide at a left margin of 25 and a top margin of
-     * 35, so it sat narrower than the cover, further from the screen's edge and closer to the rows
-     * than to it. It now takes the cover's own left margin and the cover's drawn width, which puts
-     * the same gap on both sides of it as on both sides of a cover, and it is centred against the
-     * rows by the same rule. The height follows the box's 2:3, or the fit would be limited by it
-     * and the picture would come out at the width it was — the trap {@code tiltWidth} explains.
-     *
-     * {@code FIT_START} and no padding, so the picture starts at the box's top-left corner and
-     * the box IS the geometry; nothing here depends on the placeholder's own resolution.
-     *
-     * It has nothing to do with the tilt and never did — stock does not tilt this view — so this
-     * runs in both looks, and it is applied from {@link #instantCover}, i.e. once per track before
-     * anything has decided whether there is a cover at all. That is the only place guaranteed to
-     * run: a track that is neither cached nor recorded as coverless reaches the placeholder through
-     * a branch of stock's own, some 200 ms later, with nothing of ours in between.
+     * {@code cover_bg2}, the no-artwork placeholder, shown as a cover is: same box, same tilt or
+     * none as "Tilt the cover" says, same frame and reflection. From
+     * {@link #instantCover}, once per track before anything knows whether there is a cover — the
+     * one place sure to run; stock shows the placeholder later with nothing of ours in between.
      */
     private static void blank(BasePlayerActivity a) {
         try {
+            if (srcKeep == null) keepSrcs(a.getResources());
             ActivityMusicPlayerBinding vb = (ActivityMusicPlayerBinding) a.getVb();
             if (vb == null) return;
             ReflectImageView v = vb.coverBg2;
@@ -444,34 +388,81 @@ public final class Cover {
             ViewGroup.MarginLayoutParams cp =
                     (ViewGroup.MarginLayoutParams) vb.coverBg.getLayoutParams();
             if (lp == null || cp == null) return;
-            capture(cp);                        // this runs before tilt on the coverless path
-            if (boxW <= 0 || boxH <= 0) return;
-
-            int left = leftOf(cp);
-            int side = boxW - inset(vb, boxW, left);      // the width a cover is drawn at
-            v.setScaleType(ImageView.ScaleType.FIT_START);
-            v.setPadding(0, 0, 0, 0);
-            box(v, lp, side, Math.round((float) side * boxH / boxW),
-                    topFor(vb, lp, side), left);
+            capture(cp);                        // runs before tilt on the coverless path
+            Bitmap pic = blankCover();
+            android.graphics.drawable.Drawable d = v.getDrawable();
+            if (pic != null && !(d instanceof BitmapDrawable && ((BitmapDrawable) d).getBitmap() == pic)) {
+                // past setImageBitmap: that one reflects again, through the cover's own buffers
+                v.setImageDrawable(new BitmapDrawable(a.getResources(), pic));
+            }
+            shape(vb, v, lp, leftOf(cp));
         } catch (Throwable t) {
-            // cosmetic; the placeholder is shown either way
         }
     }
 
+    private static Bitmap blankPic;
+    private static int blankLook = -1;
+
     /**
-     * The placeholder, painted as instantly as a cached cover is.
-     *
-     * A track WITH artwork never flashes, because {@code Ipp.instantCover} paints it out of
-     * {@code BigCover} synchronously; a track WITHOUT any showed an empty frame until the async
-     * read came back null some 200 ms later and stock's own branch made {@code cover_bg2} visible
-     * — which is the blink at the start of every songless-cover track. So do the same thing the
-     * cached-cover path does: when the track is recorded as having no artwork
-     * ({@link BigCover#knownNone}), swap the views here and now.
-     *
-     * Nothing is built: both {@code cover_bg} and {@code cover_bg2} already hold the reflected
-     * placeholder their constructor took from {@code Ipp.reflCache} — one bitmap for the whole
-     * process, whichever player screen inflated it first. This is only which view is visible,
-     * exactly what stock's null branch does, so the async pass that follows agrees with it.
+     * The player's button icons (the android:src of activity_music_player), held: Resources keeps
+     * a decoded drawable only weakly, and after each collection the layout decoded them all
+     * again. The cover views' own src is a 4×4 ipp_cover_src: they never show it.
+     */
+    private static Object[] srcKeep;
+
+    private static final int[] PLAYER_SRCS = {
+            R.drawable.icon_a_to_b, R.drawable.icon_b_question_mark,
+            R.mipmap.ipp_bookmark, R.mipmap.ipp_heart_off, R.mipmap.ipp_lyrics, R.mipmap.ipp_queue,
+            R.mipmap.ipp_speed_off, R.mipmap.ipp_timer_off, R.mipmap.music_no_repeat,
+            R.mipmap.music_no_shuffle, R.mipmap.music_volume_full, R.mipmap.music_volume_off };
+
+    private static void keepSrcs(android.content.res.Resources r) {
+        Object[] k = new Object[PLAYER_SRCS.length];
+        for (int i = 0; i < k.length; i++) {
+            try {
+                k[i] = r.getDrawable(PLAYER_SRCS[i]);
+            } catch (Throwable t) {
+            }
+        }
+        srcKeep = k;
+    }
+
+    /** The placeholder as a cover is shown, framed for the look and reflected; also what Cover Flow flies. One per look. */
+    public static synchronized Bitmap blankCover() {
+        boolean flat = flatCover();
+        int now = flat ? 0 : 1;
+        if (blankPic != null && blankLook == now && !blankPic.isRecycled()) return blankPic;
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inScaled = false;
+        Bitmap src = BitmapFactory.decodeResource(
+                Y1Application.Companion.getAppContext().getResources(), R.drawable.bg_player_cover_view, o);
+        if (src == null) return null;
+        int w = src.getWidth();
+        int h = src.getHeight();
+        int side = w <= h ? w : h;
+        int f = flat ? 0 : 2;               // softEdge's frame: left, right and top
+        Bitmap framed = Bitmap.createBitmap(side + 2 * f, side + f, Bitmap.Config.ARGB_8888);
+        Paint p = new Paint(Paint.FILTER_BITMAP_FLAG);
+        int x = (w - side) / 2;
+        int y = (h - side) / 2;
+        new Canvas(framed).drawBitmap(src, new Rect(x, y, x + side, y + side),
+                new Rect(f, f, f + side, f + side), p);
+        src.recycle();
+        int fw = framed.getWidth();
+        int fh = framed.getHeight();
+        Bitmap out = Bitmap.createBitmap(fw, fh + fh / 2, Bitmap.Config.ARGB_8888);
+        Canvas c = new Canvas(out);
+        c.drawBitmap(framed, 0, 0, null);
+        mirror(c, framed, fw, fh, f);
+        framed.recycle();
+        blankPic = out;
+        blankLook = now;
+        return out;
+    }
+
+    /**
+     * The placeholder painted at once for a track KNOWN to have no artwork — otherwise it blinks
+     * in ~200 ms later. Only the views' visibility, exactly what stock's null branch then does.
      */
     public static void instantBlank(BasePlayerActivity a, String path) {
         try {
@@ -486,13 +477,9 @@ public final class Cover {
         }
     }
 
-    // ---- the placeholder's reflection, built once per process ---------------------------------
-
     /**
-     * Ipp: the reflected placeholder cover, built once at the first {@code ReflectImageView}
-     * inflation and shared by every later one (see {@code ReflectImageView.<init>}). One immutable
-     * bitmap, never recycled. {@code activity_music_player.xml} holds TWO of those views, so
-     * without this every player open paid for the same ~834 KB composite twice.
+     * The reflected placeholder, built at the first {@code ReflectImageView} inflation and shared
+     * by every later one. Never recycled.
      */
     private static Bitmap reflCache;
 
@@ -512,26 +499,16 @@ public final class Cover {
         reflCache = b;
     }
 
-    // ---- the cover's geometry -----------------------------------------------------------------
+    /**
+     * The framed cover of the track on screen. Never shown itself — only {@link #reflect}'s
+     * composite is — so every cover is drawn into the same one; its generation id tells them apart.
+     */
+    private static Bitmap edge;
 
     /**
-     * Ipp: the Now-Playing cover is drawn rotated 20 deg around Y ({@link #tilt}), which turns
-     * its top and bottom edges into slanted lines. Neither the software nor the hardware pipeline
-     * antialiases the EDGE of a transformed bitmap, so those two edges came out as visible stair
-     * steps.
-     *
-     * Fix: give the bitmap a fully transparent 2px frame. The outermost texels are then
-     * transparent, so the bilinear filtering that already applies inside the transformed image
-     * fades the boundary out over ~1px instead of cutting it off at a hard texel row. Cheap, and it
-     * needs no change to the ImageView, the layout or the rotation itself.
-     *
-     * LEFT / RIGHT / TOP only - NOT the bottom. {@code ReflectImageView} builds the mirrored
-     * reflection from the bitmap's own lower half and butts it against the bottom edge, so a
-     * transparent row there became a 4px transparent seam between cover and reflection. The bottom
-     * edge needs no antialiasing anyway: the reflection is drawn right up against it.
-     *
-     * Applied at display time, never on the way into the cache: {@link BigCover} stores JPEG,
-     * which has no alpha channel to store the frame in.
+     * A transparent 2px frame, so bilinear filtering fades the tilted cover's slanted edges instead
+     * of stair-stepping them. Not on the bottom: a seam would open above the reflection. At display
+     * time only — the JPEG cache has no alpha. Drawn into one buffer, {@link #edge}.
      */
     private static Bitmap softEdge(Bitmap src) {
         if (src == null) {
@@ -541,7 +518,14 @@ public final class Cover {
             int w = src.getWidth();
             int hgt = src.getHeight();
             if (w > 0 && hgt > 0) {
-                Bitmap out = Bitmap.createBitmap(w + 4, hgt + 2, Bitmap.Config.ARGB_8888);
+                Bitmap out = edge;
+                if (out != null && !out.isRecycled()
+                        && out.getWidth() == w + 4 && out.getHeight() == hgt + 2) {
+                    out.eraseColor(0);
+                } else {
+                    out = Bitmap.createBitmap(w + 4, hgt + 2, Bitmap.Config.ARGB_8888);
+                    edge = out;
+                }
                 Canvas canvas = new Canvas(out);
                 Paint paint = new Paint();
                 paint.setFilterBitmap(true);
@@ -555,30 +539,23 @@ public final class Cover {
     }
 
     /** The player's cover: a centred 1:1 crop capped at 320px, plus {@link #softEdge}'s frame. */
-    public static Bitmap fitCover(Bitmap src) {
+    public static synchronized Bitmap fitCover(Bitmap src) {
         if (src == null) {
             return null;
         }
-        // Asked before the memo: it is what empties it when the look changes.
-        boolean flat = flatCover();
-        // Memoised by the SOURCE bitmap - see the memo above.
+        boolean flat = flatCover();             // before the memo: it empties it
         Bitmap memo = fitMemo(src);
         if (memo != null) {
             return memo;
         }
-        // ipp: CENTRE CROP TO 1:1, whatever the aspect ratio. The source's centred square
-        // (side = min(w, h)) is taken and scaled into the target square, so both axes are cropped
-        // symmetrically. Fitting the HEIGHT and centring horizontally is a centre crop only for a
-        // landscape cover: a portrait one is squeezed to the full height and comes out with
-        // transparent bars beside it, i.e. not cropped at all.
         try {
             int w = src.getWidth();
             int hgt = src.getHeight();
             if (w > 0 && hgt > 0) {
                 int side = w <= hgt ? w : hgt;          // side of the source's centred square
-                int out = side > 320 ? 320 : side;      // the square actually drawn, capped at 320
+                int out = side > 320 ? 320 : side;
                 if (w == hgt && hgt == out) {
-                    // already the exact square we want - the frame is only wanted under the rotation
+                    // the frame is only wanted under the rotation
                     return fitPut(src, flat ? src : softEdge(src));
                 }
                 int x = (w - side) / 2;
@@ -591,9 +568,6 @@ public final class Cover {
                 paint.setFilterBitmap(true);
                 paint.setAntiAlias(true);
                 canvas.drawBitmap(src, from, to, paint);
-                // transparent frame so the 20 deg Y-rotation leaves no stair-stepped edge
-                // transparent frame so the 20 deg Y-rotation leaves no stair-stepped edge; drawn
-                // straight on there is no slanted edge to fade, and the frame would only inset it
                 return fitPut(src, flat ? dst : softEdge(dst));
             }
         } catch (Throwable t) {
@@ -602,14 +576,8 @@ public final class Cover {
     }
 
     /**
-     * Ipp: CENTRE CROP TO 1:1, whatever the aspect ratio - the source's centred square
-     * (side = min(w, h)) scaled into a {@code size x size} bitmap. Both axes are cropped
-     * symmetrically; for a square source nothing changes. Fitting the HEIGHT and centring
-     * horizontally instead would crop a landscape cover correctly but leave a portrait one whole,
-     * with transparent bars beside it.
-     *
-     * The list thumbnails go through this one too ({@link CoverCache}, {@link BigCover},
-     * {@link Find}), which is why it takes the size rather than assuming the player's.
+     * The source's centred square scaled to {@code size} — both axes cropped, so a portrait cover
+     * gets no side bars. Shared by the thumbnails, hence the size parameter.
      */
     public static Bitmap square(Bitmap src, int size) {
         if (src == null) {
@@ -626,14 +594,8 @@ public final class Cover {
                 paint.setFilterBitmap(true);
                 paint.setAntiAlias(true);
 
-                // Bilinear filtering only looks at 2x2 source pixels per destination pixel, so a
-                // reduction of more than 2x SKIPS most of the source: at 300 -> 50 five sixths of
-                // every 6x6 block never reach the result, and a hard edge comes out as stair steps.
-                // Halving first, repeatedly, keeps every step inside what bilinear can average
-                // properly and is what turns a big reduction into a smooth one. The loop does not
-                // run at all when the source is already close to the target, which is every caller
-                // that decoded with an inSampleSize (they arrive within 2x); it is the covers taken
-                // straight out of BigCover's 300px memory that need it.
+                // Halve first: bilinear reads 2x2 pixels, so a bigger reduction skips most of the
+                // source and stair-steps the edges.
                 Bitmap cur = src;
                 boolean mine = false;                  // only OUR intermediates may be recycled
                 while (w >= size * 2 && hgt >= size * 2) {
@@ -670,16 +632,7 @@ public final class Cover {
         return src;
     }
 
-    // ---- what the player asks for -------------------------------------------------------------
-
-    /**
-     * Ipp: the body of this lives in {@link BigCover#track} - the cover is keyed by the
-     * TRACK (with the album's representative shared on disk), not by the folder, so two songs
-     * sitting in one folder with different artwork do not inherit whichever was opened first.
-     * There is deliberately no DB gate here (song known + non-empty album): such a gate only
-     * decides whether the result is worth caching, and a per-track key is worth caching for any
-     * file.
-     */
+    /** The player's cover, from {@link BigCover#track}. No DB gate: any file is worth caching. */
     public static Bitmap bigCover(String path) {
         if (path == null) {
             return null;
@@ -691,11 +644,7 @@ public final class Cover {
         }
     }
 
-    /**
-     * This track's own cached cover if we have one, otherwise the album's representative as a
-     * stand-in - {@link BigCover#peekTrack} decides. Memory/disk only, no tag read, so it stays
-     * safe to call synchronously while the player is being built.
-     */
+    /** {@link BigCover#peekTrack}: no tag read, safe while the player is being built. */
     private static Bitmap bigCoverCached(String path) {
         if (path == null) {
             return null;
@@ -707,15 +656,30 @@ public final class Cover {
         }
     }
 
+    /** Now Playing's Style preview: {@code src} as the player shows it in the current look, the placeholder for null. */
+    public static void preview(BasePlayerActivity a, Bitmap src) {
+        try {
+            ActivityMusicPlayerBinding vb = (ActivityMusicPlayerBinding) a.getVb();
+            blank(a);
+            Bitmap b = src == null ? null : fitCover(src);
+            if (b == null) {
+                vb.coverBg.setVisibility(android.view.View.GONE);
+                vb.coverBg2.setVisibility(android.view.View.VISIBLE);
+                return;
+            }
+            vb.coverBg.setImageBitmap(b);
+            vb.coverBg.setVisibility(android.view.View.VISIBLE);
+            vb.coverBg2.setVisibility(android.view.View.GONE);
+            tilt(a);
+        } catch (Throwable t) {
+        }
+    }
+
     /** Paint the cover at once, from the caches, at the top of stock's {@code refreshCover}. */
     public static void instantCover(BasePlayerActivity a, String path) {
-        blank(a);                      // the placeholder's box, whatever this track turns out to be
+        blank(a);
         Bitmap b = bigCoverCached(path);
         if (b == null) {
-            // Nothing cached for this track. If we have already READ it and know it carries no
-            // artwork at all, put the placeholder up now - the async read would only reach the same
-            // conclusion ~200 ms later, and that delay is the blink at the start of a coverless
-            // song.
             instantBlank(a, path);
             return;
         }
@@ -729,8 +693,7 @@ public final class Cover {
             v.setImageBitmap(b);
             v.setVisibility(android.view.View.VISIBLE);
             vb.coverBg2.setVisibility(android.view.View.GONE);
-            // the view was GONE until now, so stock's posted tilt may have measured it as 0-high
-            tilt(a);
+            tilt(a);                   // the view was GONE until now
         } catch (Throwable t) {
         }
     }

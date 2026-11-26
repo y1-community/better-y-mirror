@@ -3,8 +3,6 @@ package com.innioasis.ipp;
 import android.os.SystemClock;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.ListAdapter;
-import android.widget.ListView;
 
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
@@ -16,322 +14,57 @@ import com.innioasis.y1.activity.SettingActivity;
 import java.lang.ref.WeakReference;
 
 /**
- * Wheel navigation for the RecyclerView-based Settings screen.
- *
- * Stock did {@code smoothScrollToPosition(mark)} + {@code notifyDataSetChanged()} on EVERY wheel
- * click, so one click restarted a smooth-scroll animation and rebound every visible row — and
- * because the wheel's speed util can invoke the step up to 11 times inside a single key event,
- * that is up to 11 animation restarts and ~80 rebinds per click on a 480x360 API-17 device.
- *
- * Here the row is only scrolled to when it is not already fully on screen (moving the cursor
- * inside the visible window costs no scroll at all), that scroll is instant rather than animated,
- * and only the two rows whose highlight actually changes are rebound — in place, without an adapter
- * notification and therefore without a layout pass. The item animator is dropped: a selection
- * change must repaint instantly, not cross-fade.
+ * Wheel navigation of every list ({@link #follow}; the music lists through {@link #rows}). Stock
+ * notified the adapter (and smooth-scrolled) on every step; here a step inside the visible window
+ * rebinds just the two rows whose highlight changes, in place, and scrolls only when the row is
+ * cut off — instantly.
  */
 public final class Wheel {
 
+    /**
+     * Whether the wheel accelerates here ({@code BaseActivity.getEnableSpeedClockwise}, asked on every
+     * click; the extra rows are stock's count in {@code SpeedUtil}): only the lists of Music, Videos
+     * and Audiobooks, which run to hundreds of rows, and not with alphabetical fast scroll, which
+     * takes a fast wheel over itself. On a short menu it flies past the row aimed at.
+     */
+    public static boolean fast(com.innioasis.y1.base.BaseActivity a) {
+        return longList(a) && !Prefs.on(a, "alpha_scroll");
+    }
+
+    private static boolean longList(com.innioasis.y1.base.BaseActivity a) {
+        return a instanceof com.innioasis.music.SongListActivity
+                || a instanceof com.innioasis.music.AlbumsActivity
+                || a instanceof com.innioasis.music.ArtistsActivity
+                || a instanceof com.innioasis.music.GenresActivity
+                || a instanceof com.innioasis.music.FilesActivity
+                || a instanceof com.innioasis.music.PlaylistsActivity
+                || a instanceof com.innioasis.music.PlayListActivity
+                || a instanceof com.innioasis.music.SearchActivity
+                || a instanceof com.innioasis.y1.activity.video.VideoListActivity
+                || a instanceof com.innioasis.y1.activity.video.SearchVideoActivity
+                || a instanceof com.innioasis.y1.activity.AllAudiobooksActivity
+                || a instanceof com.innioasis.y1.activity.PlayerActivity
+                || a instanceof com.innioasis.y1.activity.BookMarkActivity;
+    }
+
+    /**
+     * Top of the wheel in {@code BaseActivity.dispatchKeyEvent}: true = the click is dropped. While a
+     * grid's frame changes rows ({@link PlGrid#busy}), and within the stop after a wrap
+     * ({@link Loop#afterWrap}).
+     */
+    public static boolean drop(android.app.Activity a) {
+        return PlGrid.busy(a) || Loop.afterWrap();
+    }
+
     private static WeakReference lastRv;
     private static int lastPos = -1;
-    /**
-     * The adapter {@link #lastPos} was worked out from. A row number outlives the list it belongs
-     * to, and a screen that pages several lists through ONE RecyclerView by swapping the adapter
-     * therefore has to be told apart from one the wheel is walking a row at a time.
-     */
+    /** The adapter {@link #lastPos} belongs to: a screen may swap adapters in one RecyclerView. */
     private static WeakReference lastAdapter;
-    /** The RecyclerView whose animator/cache/prefetch have already been set up; see {@link #follow}. */
+    /** The RecyclerView set up by {@link #follow}. */
     private static WeakReference tuned;
-    /** The layout manager that setup was done on — the prefetch flag is the manager's, not the list's. */
+    /** ...and its layout manager: the prefetch flag is the manager's. */
     private static WeakReference tunedLm;
 
-    // ------------------------------------------------------------------ ListView screens
-    //
-    // Replaces the body of Other.listViewScroll, which every list screen in the app goes through
-    // (music, video, folders, genres, audiobooks). Stock does, per step:
-    //     adapter.toNext()/toPrevious()  -> notifyDataSetChanged()
-    //     lv.setSelection(...)           -> even when the window does not have to move
-    // Both only call requestLayout(), so a burst of accelerated steps COALESCES into one layout —
-    // there is no 11x rebuild here (SpeedUtil's runMultipleTimes is a plain synchronous loop). The
-    // layout itself is the cost: `mDataChanged` makes ListView detach every visible child into the
-    // recycler and re-fill, i.e. ~8 getView + measure passes per key event, to move a highlight
-    // between two rows.
-    //
-    // So: while the cursor stays inside the visible window, nothing is notified and nothing is
-    // scrolled — the two affected rows are rebound in place, and even that is POSTED, so an
-    // accelerated burst of N steps still repaints exactly twice (the row the burst started on and
-    // the one it ended on) instead of 2N times. Leaving the window falls back to stock's
-    // notify + setSelection, which is what actually has to happen there.
-    //
-    // MyBaseAdapter.toNext/toPrevious (called from nowhere else) carry no notifyDataSetChanged, so
-    // the position can move without dragging a layout along.
-    //
-    // ---- where the rest of a click goes, and why nothing more is done about it here -------------
-    //
-    // Profiled on the device (a debuggable build + `am profile`, eight clicks scrolling in All
-    // songs, one traversal per click). Inclusive times, inflated by tracing, so read them against
-    // each other and read the CALL COUNTS as exact:
-    //
-    //     ConstraintLayout.onLayout      24 calls   1135 ms
-    //     ConstraintLayout.onMeasure     20 calls    808 ms
-    //     ConstraintLayout.dispatchDraw  32 calls    293 ms
-    //     SongListAdapter.getView        24 calls     67 ms
-    //     everything ipp adds together              ~40 ms
-    //
-    // The row binds are ~5% of it. The cost is the measure and layout of the visible rows, and
-    // inside those, largely Android 4.2's RTL resolution — View.measure() calls
-    // resolveRtlPropertiesIfNeeded() over the whole subtree and canResolveTextDirection() walks up
-    // the parent chain for every view, 31 130 calls over those eight clicks. Two ways at that were
-    // TRIED AND REJECTED on measurements — do not re-derive them:
-    //
-    //  - Dropping notifyDataSetChanged from the scroll path so the layout can reuse its active
-    //    views. Halves the getView calls (24 -> 14) and changes nothing else — the rows are dirty
-    //    anyway and repainting in place invalidates them, so the traversal count goes UP (4 -> 11).
-    //    Slightly WORSE in Albums (54 vs 46 ms per click), level in All songs. Posting that repaint
-    //    instead is worse still (an extra layout pass) and repaints only the two ends of an
-    //    accelerated burst, which shows two highlighted rows at once.
-    //  - `android:supportsRtl="false"`, the one thing that would actually stop the RTL walk: ~5% by
-    //    call counts, at the price of leaving the Hebrew locale un-mirrored.
-    //
-    // What is left is the row layout itself. `item_main.xml` (Artists, the Music menu) is a
-    // LinearLayout with a fixed height and costs 25 ms per click; a wrap_content ConstraintLayout
-    // costs 46 on the same ListView code path. So `item_songlist.xml` and `item_album.xml` are built
-    // around a RelativeLayout — worth ~17% (49.6 -> 41 ms) and ~25% (48 -> 36). Each layout carries
-    // its own measurements and traps in its own comment, including why a burst of injected input is
-    // useless for measuring this.
-
-    private static WeakReference pendLv;
-    private static int pendFrom;
-    // A separate flag, NOT `pendFrom < 0`: stock's cancelSelect() parks the adapter at position
-    // **-1** while the cursor sits on the Shuffle row, so coming back down gives old == -1 — a
-    // perfectly valid "the previous row is off screen". Overloading -1 as the idle sentinel made
-    // the posted repaint cancel itself, and song 1 came back with no highlight at all.
-    private static boolean pendOn;
-    private static final Repaint REPAINT = new Repaint();
-
-    public static void list(ListView lv, int type) {
-        try {
-            if (lv == null) return;
-            ListAdapter la = lv.getAdapter();
-            if (!(la instanceof MyBaseAdapter)) return;   // stock threw here too, and was caught
-            MyBaseAdapter a = (MyBaseAdapter) la;
-
-            // Who owns the cursor of this list: the user has just turned the wheel on it, so it is
-            // theirs for a while and playback does not get to move it. Here and not in the key
-            // handler — in the player the wheel is VOLUME, and this method is the one place the
-            // cursor of a list actually moves. Before Alpha.step's fast-scroll branch and before
-            // the "clamped at an end, nothing changed" return: both are the wheel being turned.
-            // See Follow.
-            Follow.touched(lv, a);
-
-            // spun fast enough, a long list moves by first letter instead of by row.
-            // drop() first, so a repaint posted by the previous (row-wise) step cannot fire on
-            // top of the jump.
-            if (Alpha.step(lv, a, type)) {
-                drop();
-                return;
-            }
-
-            // Catch-all for the status bar's icon: it steps aside for the playing marker, and the
-            // question is normally re-asked when a song row binds — which never happens on a screen
-            // that swaps one adapter for another inside the same ListView (Genres pages three
-            // levels through one). A wheel click is the one thing every list has. One boolean in
-            // the common case; see Status.check.
-            Status.check(lv);
-
-            int first = lv.getFirstVisiblePosition();
-            int last = lv.getLastVisiblePosition();
-            int old = a.getPosition();
-
-            if (type == 1) a.toNext(); else a.toPrevious();
-            int now = a.getPosition();
-            if (now == old) return;                        // clamped at an end: nothing changed
-
-            // Going down it scrolls at `now >= last`, one step "early", because
-            // getLastVisiblePosition() counts the partially visible bottom row — with `now > last`
-            // the cursor parked on that half-row and the list never followed it.
-            //
-            // Going up needs the same correction, for the same reason: getFirstVisiblePosition()
-            // also counts a row that is only PARTIALLY on screen, so `now < first` alone let the
-            // cursor land on a half-cut top row without scrolling — the highlight looked like it
-            // had run off the screen and paging had stopped. `setSelection` normally leaves the
-            // list row-aligned, which is why it only showed on the LAST page: there the scroll
-            // clamps at the list's end, mid-row. Rather than mirroring the "one step early" trick
-            // (which would cost a re-layout every time the cursor merely reaches a fully visible
-            // top row), scroll only when the row it lands on is actually cut off.
-            //
-            // Landing on track 1 deliberately does NOT bring the Shuffle row back: that would push
-            // the highlighted row down by the row's height, which reads as a jump. The row comes
-            // back when it becomes the cursor, and then it lands exactly where track 1 was — see
-            // Head.reveal, which hangs off the row's own selected state.
-            boolean scroll = (type == 1)
-                    ? (now >= last)
-                    : (now < first || cutAtTop(lv, now, first));
-            if (scroll) {
-                drop();
-                // Stock scrolls DOWN by whole rows: `now - last + first + 1` moves the window down
-                // by as many rows as the cursor went past the bottom edge. That lands the cursor
-                // on a fully visible row only while every row is the same height — which is every
-                // list in the app except a multi-disc album's, where the first row of each disc
-                // carries the disc strip. There, and only there, the window is moved by PIXELS:
-                // the row is put against the bottom edge, exactly as far as it was cut off.
-                // Every other list keeps stock behaviour, down to the partially visible row it
-                // leaves at the bottom.
-                boolean vary = type == 1 && Disc.variableRows(a);
-                int h = vary ? rowHeight(lv, now, first) : 0;
-                // The list's top edge is NOT its paddingTop: that padding is the space the
-                // Shuffle row rides through, and once it has gone the list begins at 0 (or at the
-                // disc bar). Head.top is that boundary; the offset setSelectionFromTop takes is
-                // measured FROM the padding, hence the subtraction.
-                int lt = Head.top(lv);
-                int lb = lv.getHeight() - lv.getPaddingBottom();
-                a.notifyDataSetChanged();
-                if (vary && h > 0 && h <= lb - lt) {
-                    // The height above is exact, so no correcting pass is posted: a second
-                    // setSelectionFromTop lays the list out twice and that shows as a flicker,
-                    // and that flicker is exactly what crossing a disc boundary would show.
-                    Head.place(lv, now, lb - h);
-                } else if (type == 1) {
-                    // Stock moves the window down by whole rows, and the Shuffle row is a row's
-                    // worth of space of its own — so while it is still showing it is the first
-                    // thing to go, and the target is one row short of stock's. Without that a
-                    // single step scrolled the row AND a list row away at once.
-                    int target = now - last + firstShown(lv, first, lt) + 1;
-                    if (Head.headerShowing(lv)) target--;
-                    if (target < 0) target = 0;
-                    Head.selectPinned(lv, target);
-                    if (vary) postFit(lv, now);
-                } else {
-                    Head.selectPinned(lv, now);
-                    if (vary) postFit(lv, now);
-                }
-                return;
-            }
-
-            if (skipFast(a)) {                             // adapter cannot be rebound in place
-                a.notifyDataSetChanged();
-                return;
-            }
-
-            arm(lv, old);
-        } catch (Throwable t) {
-            // a wheel click must never take the screen down
-        }
-    }
-
-    /**
-     * Arrange for the row the burst left and the row it lands on to be rebound once, after the
-     * layout. {@code old} is remembered only the first time in a burst, so N accelerated steps still
-     * cost exactly two rebinds.
-     */
-    private static void arm(ListView lv, int old) {
-        if (!pendOn || pendLv == null || pendLv.get() != lv) {
-            pendLv = new WeakReference(lv);
-            pendFrom = old;                                // where this burst started
-            pendOn = true;
-            lv.post(REPAINT);
-        }
-    }
-
-    private static void drop() {
-        pendLv = null;
-        pendFrom = 0;
-        pendOn = false;
-    }
-
-    /**
-     * True when the row at {@code pos} is clipped by the list's top edge. Only called for a row at
-     * or below {@code first}; an unknown row is false, so a missing child can never force a scroll.
-     *
-     * Package-visible: {@code Follow} scrolls by the same rule when it chases the playing track.
-     */
-    /**
-     * The first row with anything of it left on screen.
-     *
-     * {@code getFirstVisiblePosition()} is the first ATTACHED child, and a child that has scrolled
-     * entirely above the top edge stays attached — an exact restore of a list's scroll position
-     * (Albums, Genres) routinely leaves one sitting at exactly {@code bottom == edge}. Stock's
-     * downward scroll is "move the window on by {@code now - last} rows, measured from
-     * {@code first}", so counting that row makes the step one row short and the cursor is left on
-     * the sliver at the bottom edge, click after click.
-     *
-     * Package-visible: {@code Follow} scrolls by the same rule when it chases the playing track.
-     */
-    static int firstShown(ListView lv, int first, int edge) {
-        int n = lv.getChildCount();
-        for (int i = 0; i < n; i++) {
-            View c = lv.getChildAt(i);
-            if (c != null && c.getBottom() > edge) return first + i;
-        }
-        return first;
-    }
-
-    static boolean cutAtTop(ListView lv, int pos, int first) {
-        int i = pos - first;
-        if (i < 0 || i >= lv.getChildCount()) return false;
-        View child = lv.getChildAt(i);
-        if (child == null) return false;
-        return child.getTop() < Head.top(lv);
-    }
-
-    /**
-     * Height of the row the cursor landed on, in a list whose rows are not all the same height.
-     *
-     * It is still on screen whenever the cursor merely stepped onto the partially visible bottom
-     * row (`last` counts that one), and then the height is read off it. A row BELOW the window —
-     * where the step lands after the previous one was pinned to the bottom edge — has to be worked
-     * out instead, and taking the bottom row's height as-is is wrong by exactly the disc strip
-     * whenever one of the two carries one: that is what left the cursor a strip's height above the
-     * bottom edge for the whole of CD2. Rows differ only by that strip, so subtracting it from the
-     * measured row and adding it back for the target is exact.
-     */
-    private static int rowHeight(ListView lv, int pos, int first) {
-        View c = lv.getChildAt(pos - first);
-        if (c != null) return c.getHeight();
-        int n = lv.getChildCount();
-        if (n == 0) return 0;
-        View bottom = lv.getChildAt(n - 1);
-        if (bottom == null) return 0;
-        int strip = Disc.stripPx(bottom);
-        int base = bottom.getHeight() - (Disc.startsDisc(first + n - 1) ? strip : 0);
-        return base + (Disc.startsDisc(pos) ? strip : 0);
-    }
-
-    private static WeakReference fitLv;
-    private static int fitPos = -1;
-    private static final Fit FIT = new Fit();
-
-    private static void postFit(ListView lv, int pos) {
-        fitLv = new WeakReference(lv);
-        fitPos = pos;
-        lv.removeCallbacks(FIT);
-        lv.post(FIT);
-    }
-
-    /** Checks the landing after the layout and corrects it only when it is actually wrong. */
-    static final class Fit implements Runnable {
-        public void run() {
-            try {
-                Object o = fitLv == null ? null : fitLv.get();
-                int pos = fitPos;
-                fitLv = null;
-                fitPos = -1;
-                if (!(o instanceof ListView) || pos < 0) return;
-                ListView lv = (ListView) o;
-                View c = lv.getChildAt(pos - lv.getFirstVisiblePosition());
-                if (c == null) return;
-                int top = Head.top(lv);
-                int bottom = lv.getHeight() - lv.getPaddingBottom();
-                if (c.getHeight() > bottom - top) return;      // taller than the window: leave it
-                if (c.getBottom() > bottom) {
-                    Head.place(lv, pos, bottom - c.getHeight());
-                } else if (c.getTop() < top) {
-                    Head.place(lv, pos, top);
-                }
-            } catch (Throwable t) {
-                // a wheel click must never take the screen down
-            }
-        }
-    }
 
     private static WeakReference restRv;
     private static int restPos = -1;
@@ -345,19 +78,16 @@ public final class Wheel {
     private static boolean painting;
 
     /**
-     * Mark the wheel as moving and arrange for the panel beside the list to be painted — see
-     * {@link #panelUpdate} for why it must not be painted from the row's bind.
-     *
-     * Two messages. {@link Now} is posted plainly, so it runs once the whole key event is done (the
-     * speed util may step several rows inside one) and paints the row the cursor landed on — a lone
-     * click shows its preview as promptly as the main menu does. It skips when the panel was painted
-     * less than {@link #PANEL_MS} ago, so a fast spin does not repaint it for every row flown past:
-     * on Settings that panel is a preview image, two captions and (on one row) the measured cache
-     * size, the most expensive thing a click there can trigger. {@link Rest}, re-posted DELAYED on
-     * every click, paints whatever the burst ended on.
+     * The wheel is moving: the panel beside the list is painted by {@link Now} after the key event
+     * (throttled to {@link #PANEL_MS}), and by {@link Rest} at the end of the burst.
      */
+    /** {@code w} when it already holds {@code o}: these are set on every click. */
+    private static WeakReference same(WeakReference w, Object o) {
+        return w != null && w.get() == o ? w : new WeakReference(o);
+    }
+
     private static void postRest(RecyclerView rv, int pos) {
-        restRv = new WeakReference(rv);
+        restRv = same(restRv, rv);
         restPos = pos;
         busy = true;
         rv.removeCallbacks(REST);
@@ -370,28 +100,19 @@ public final class Wheel {
     private static String panelTitle;
 
     /**
-     * Injected at the top of {@code SettingActivity.refreshRight}: true = do not paint the panel
-     * now; note what it should show and let {@link Now} or {@link Rest} paint it from a plain posted
-     * message.
-     *
-     * That panel — preview image and two captions — is stock-painted from inside a row's
-     * bind, i.e. in the middle of the list's layout. Its views change size, and the
-     * re-measure they ask for there cannot be served in the same frame, so the new content was
-     * drawn into the bounds of whatever the panel showed before: the image cut off at the bottom,
-     * the captions cut off at the end. Painting it from outside any layout pass makes the request
-     * an ordinary one and the very first frame correct.
-     *
-     * Two earlier attempts at this are worth not repeating. Marking the panel's ancestors with
-     * {@code forceLayout()} makes {@code isLayoutRequested()} true on them, and
-     * {@code View.requestLayout()} only walks up while the parent has not already requested
-     * layout — so it silently swallowed the requests the panel and the rows were raising
-     * themselves. And re-measuring after the repaint instead of before only scheduled one more
-     * pass, so the clipped version was drawn for a frame and then corrected — the flicker.
+     * Top of {@code SettingActivity.refreshRight}: true = paint later from a posted message. Stock
+     * paints the panel from inside a row's bind, mid-layout, and its resized views were drawn into
+     * the old bounds — clipped. Do not {@code forceLayout()} the ancestors: it swallows the
+     * requests.
      */
     public static boolean panelUpdate(SettingActivity host, String title) {
-        if (!busy || painting) {               // not a wheel move, or our own paint: paint it now
+        if (MenuStyle.simple(host)) {          // no panel: kept for the day it is shown again
+            panelHost = new WeakReference(host);
+            panelTitle = title;
+            return true;
+        }
+        if (!busy || painting) {               // not a wheel move, or our own paint
             painted = title;
-            stateShift(host, title);
             return false;
         }
         panelHost = new WeakReference(host);
@@ -399,63 +120,24 @@ public final class Wheel {
         return true;
     }
 
-    /**
-     * The state caption under the preview, moved down by {@code R.dimen.ipp_state_top}.
-     *
-     * The caption hangs off the bottom of the picture, which hangs off the bottom of the title, and
-     * the title reserves two lines in the locales whose settings names need them
-     * ({@code R.integer.ipp_title_lines}). In those locales the whole column sits a line lower and
-     * the caption ends up crowded against it, so the dimen is non-zero for exactly the same
-     * locales and zero everywhere else.
-     *
-     * About is the exception: its panel carries {@code AboutView} plus several lines of
-     * device information, and there is no room below it — a shift there pushes the last line off
-     * the screen. It is recognised the way stock recognises it in {@code refreshRight}, by the
-     * title matching {@code setting_about}.
-     *
-     * Called from the paint path, not from a row's bind: a margin change asks for a layout, and
-     * the whole point of the deferral above is that the panel's layout is not requested from
-     * inside the list's own.
-     */
-    private static void stateShift(SettingActivity host, String title) {
-        try {
-            View tv = ((android.app.Activity) host).findViewById(R.id.info_state_tv);
-            if (tv == null) return;
-            ViewGroup.MarginLayoutParams lp = (ViewGroup.MarginLayoutParams) tv.getLayoutParams();
-            if (lp == null) return;
-            int top = 0;
-            if (!host.getString(R.string.setting_about).equals(title)) {
-                top = host.getResources().getDimensionPixelSize(R.dimen.ipp_state_top);
-            }
-            if (lp.topMargin != top) {
-                lp.topMargin = top;
-                tv.setLayoutParams(lp);
-            }
-        } catch (Throwable t) {
-            // a cosmetic offset is never worth taking the screen down for
-        }
-    }
-
     private static String painted;
 
-    /**
-     * True while the panel is showing this row. Called by work that finishes late and wants to
-     * repaint — {@code CacheSize} measures the cache on a background thread, and by the time it
-     * has a number the wheel may have moved on, where repainting would put the wrong row's
-     * content on screen.
-     */
+    /** The panel is painted with the cursor at rest, not from inside a burst of clicks. */
+    static boolean panelAtRest() {
+        return !busy;
+    }
+
+    /** The panel still shows this row — for late work ({@code CacheSize}) before it repaints. */
     public static boolean panelShows(String title) {
         return title != null && title.equals(painted);
     }
 
-    /**
-     * Paints whatever a panel beside the list is waiting for — the Settings panel or the
-     * equaliser's preview — from a posted message, where no layout is in progress.
-     */
-    private static void paintPanel() {
+    /** Paints the Settings panel or the equaliser's preview, outside any layout. */
+    static void paintPanel() {
         panelAt = SystemClock.uptimeMillis();
         Eq.paint();
         Object h = panelHost == null ? null : panelHost.get();
+        if (h instanceof SettingActivity && MenuStyle.simple((SettingActivity) h)) return;
         String t = panelTitle;
         panelHost = null;
         panelTitle = null;
@@ -465,7 +147,6 @@ public final class Wheel {
                 painted = t;
                 ((SettingActivity) h).ippRefreshRight(t);
             } catch (Throwable e) {
-                // a stale panel is better than a crash on a wheel click
             } finally {
                 painting = false;
             }
@@ -488,172 +169,182 @@ public final class Wheel {
         }
     }
 
-    /** Rebinds just the row the burst left and the row it landed on. */
-    static final class Repaint implements Runnable {
-        public void run() {
-            try {
-                if (!pendOn) return;
-                WeakReference w = pendLv;
-                int from = pendFrom;                       // may legitimately be -1 (see pendOn)
-                drop();
-                if (w == null) return;
-                Object o = w.get();
-                if (!(o instanceof ListView)) return;
-                ListView lv = (ListView) o;
-                ListAdapter la = lv.getAdapter();
-                if (!(la instanceof MyBaseAdapter)) return;
-                MyBaseAdapter a = (MyBaseAdapter) la;
-                int first = lv.getFirstVisiblePosition();
-                int last = lv.getLastVisiblePosition();
-                int now = a.getPosition();
-                if (!bind(lv, a, from, first, last) || !bind(lv, a, now, first, last)) {
-                    a.notifyDataSetChanged();              // could not reach a row: let the list do it
+
+    /**
+     * The cursor moved again right after {@link #follow}, by a screen's own rule: the same
+     * repaint and scroll from where follow left it, and a move round the end stays one. False =
+     * not the list follow saw last; the caller repaints.
+     */
+    public static boolean refollow(RecyclerView.Adapter adapter, int pos) {
+        RecyclerView rv = lastRv == null ? null : (RecyclerView) lastRv.get();
+        if (rv == null || lastAdapter == null || lastAdapter.get() != adapter) return false;
+        stickyWrap = wrapping;
+        follow(rv, pos, adapter);
+        return true;
+    }
+
+    private static boolean stickyWrap;
+
+    /** When the wheel last moved a cursor: how {@link Loop} tells a fast wheel at the list's end. */
+    static long stepAt;
+
+    /** {@link #follow} for a caller that KNOWS which row loses the cursor (a jump, a new list). */
+    public static void follow(RecyclerView rv, int prev, int pos, RecyclerView.Adapter adapter) {
+        if (rv == null) return;
+        lastRv = same(lastRv, rv);
+        lastAdapter = same(lastAdapter, adapter);
+        lastPos = prev;
+        follow(rv, pos, adapter);
+    }
+
+    /**
+     * A music list ({@link SongRows}), in place of {@code Other.listViewScroll}: the step drawn by
+     * {@link #follow}, once per frame.
+     */
+    public static void rows(RecyclerView rv, int type) {
+        try {
+            // a dialog's list: its keys never pass BaseActivity's check (drop)
+            if (Loop.afterWrap()) return;
+            SongRows r = SongRows.of(rv);
+            if (r == null) return;
+            MyBaseAdapter a = r.model();
+            Follow.touched(rv, a);
+            if (Alpha.step(rv, a, type)) return;
+            Status.check(rv);
+            // a jump still being laid out, or the rows still gliding to the end to go round
+            if (Bar.holds(rv, type)) return;
+            int old = r.cursor();
+            int m = a.getPosition();
+            if (type == 1 ? m >= a.getCount() - 1 : m <= 0) {
+                // round the end the step draws itself: what is drawn so far must be current
+                flushRows();
+                if (Loop.fromShuffle(rv, a, type)) return;
+                // on the Shuffle row nothing is above it: the screen's spv.onAntiClockwise keeps it
+                if (m < 0) {
+                    Loop.aboveShuffle();
+                    return;
                 }
-            } catch (Throwable t) {
-                // ignore
             }
+            if (type == 1) a.toNext(); else a.toPrevious();
+            if (a.getPosition() == m) {                 // clamped at an end
+                Loop.list(rv, a, type, m);
+                stepAt = SystemClock.uptimeMillis();
+                return;
+            }
+            stepAt = SystemClock.uptimeMillis();
+            // drawn next frame: going round must wait from now, not from the draw
+            Loop.moved();
+            stepRows(rv, old);
+        } catch (Throwable t) {
+        }
+    }
+
+    // A step moves the model's cursor at once and is DRAWN once per frame: the wheel's
+    // acceleration replays a step several times per click, and a repaint and scroll per replay
+    // let the clicks queue up behind the list — it scrolled on after the wheel stopped.
+    private static WeakReference stepRv;
+    private static int stepFrom;
+    private static boolean stepOn;
+    private static final Step STEP = new Step();
+
+    private static void stepRows(RecyclerView rv, int from) {
+        if (stepOn && stepRv != null && stepRv.get() == rv) return;   // drawn from the first one
+        flushRows();
+        stepRv = same(stepRv, rv);
+        stepFrom = from;
+        stepOn = true;
+        android.view.Choreographer.getInstance().postFrameCallback(STEP);
+    }
+
+    /** The pending step drawn now. */
+    static void flushRows() {
+        if (!stepOn) return;
+        android.view.Choreographer.getInstance().removeFrameCallback(STEP);
+        STEP.doFrame(0);
+    }
+
+    static final class Step implements android.view.Choreographer.FrameCallback {
+        public void doFrame(long nanos) {
+            if (!stepOn) return;
+            stepOn = false;
+            RecyclerView rv = stepRv == null ? null : (RecyclerView) stepRv.get();
+            stepRv = null;
+            SongRows r = SongRows.of(rv);
+            if (r == null) return;
+            follow(rv, stepFrom, r.cursor(), r);
         }
     }
 
     /**
-     * True when the row is either off screen (nothing to do) or successfully rebound **in place**.
-     *
-     * Rebinding in place only works for an adapter that actually reuses {@code convertView}.
-     * Several here do not — {@code SubmenuAdapter} (the sort / long-press menu) inflates a fresh
-     * row every call and ignores the one it is given — so getView would quietly build an orphan
-     * view and the row on screen would never change: the highlight simply stopped moving. The
-     * returned view being the one we passed in is the reliable test, and the adapter is
-     * remembered so the wasted inflate happens at most once per screen.
+     * Once per RecyclerView AND LayoutManager — not keyed on getItemAnimator(), which Settings
+     * nulls itself.
      */
-    private static boolean bind(ListView lv, MyBaseAdapter a, int pos, int first, int last) {
-        if (pos < first || pos > last) return true;
-        if (pos < 0 || pos >= a.getCount()) return false;
-        View child = lv.getChildAt(pos - first);
-        if (child == null) return false;
-        if (a.getView(pos, child, lv) == child) return true;
-        noFast = new WeakReference(a);
-        return false;
-    }
-
-    private static WeakReference noFast;
-
-    private static boolean skipFast(MyBaseAdapter a) {
-        return noFast != null && noFast.get() == a;
-    }
-
-    /**
-     * The same, for a caller that KNOWS which row is losing the cursor.
-     *
-     * The plain {@link #follow} remembers the row it painted last and repaints that one — right
-     * for a list the wheel walks a row at a time, wrong the moment the screen puts the cursor
-     * somewhere on its own: the Videos browser calls this when it opens a folder, i.e. with a new
-     * list and a cursor that jumped, and the row it remembered belongs to the folder that has just
-     * been left. The row that was highlighted then never got repainted and its highlight simply
-     * stayed on screen beside the real one.
-     */
-    public static void follow(RecyclerView rv, int prev, int pos, RecyclerView.Adapter adapter) {
-        if (rv == null) return;
-        lastRv = new WeakReference(rv);
-        lastAdapter = new WeakReference(adapter);       // this caller means THIS list's row
-        lastPos = prev;
-        follow(rv, pos, adapter);
+    static void tune(RecyclerView rv) {
+        RecyclerView.LayoutManager lm = rv.getLayoutManager();
+        if (tuned != null && tuned.get() == rv && tunedLm != null && tunedLm.get() == lm) return;
+        tuned = new WeakReference(rv);
+        tunedLm = new WeakReference(lm);
+        rv.setItemAnimator(null);
+        // The view cache returns rows by position WITHOUT a rebind, and rows here are rebound in
+        // place, never notified: a cached row comes back with its old look and the cursor
+        // vanishes. Held at zero.
+        rv.setItemViewCacheSize(0);
+        // ...and prefetch re-grows that cache behind setItemViewCacheSize's back (GapWorker, on
+        // our own scrollBy at the screen's edge). Off for good.
+        if (lm != null) lm.setItemPrefetchEnabled(false);
+        // A row never takes the focus: after a layout RecyclerView hands it to a row, and a
+        // focused row scrolls the list to itself, behind the glide — the list stopped between
+        // rows. The wheel needs no focus.
+        rv.setDescendantFocusability(ViewGroup.FOCUS_BLOCK_DESCENDANTS);
+        View f = rv.findFocus();
+        if (f != null && f != rv) rv.requestFocus();
     }
 
     public static void follow(RecyclerView rv, int pos, RecyclerView.Adapter adapter) {
         try {
             if (rv == null) return;
-            // Once per RecyclerView AND per LayoutManager. NOT `if (getItemAnimator() != null)`:
-            // SettingActivity.initView does `setItemAnimator(null)` itself, so keyed on that the
-            // block never ran on the one screen that needed it most — see the cache note below
-            // for what that cost. The layout manager is in the key because the prefetch flag
-            // belongs to IT, and a screen that pages several lists through one RecyclerView hands
-            // it a fresh one per level (the FM menu does).
-            RecyclerView.LayoutManager lm = rv.getLayoutManager();
-            if (tuned == null || tuned.get() != rv || tunedLm == null || tunedLm.get() != lm) {
-                tuned = new WeakReference(rv);
-                tunedLm = new WeakReference(lm);
-                rv.setItemAnimator(null);
-                // RecyclerView keeps the two most recently detached rows in a cache keyed BY
-                // POSITION and brings them back **without rebinding** — that is the whole point of
-                // that cache, and it is correct only for an adapter that notifies when a row's
-                // content changes. Ours does not — the highlight is moved by rebinding the two rows
-                // in place — so a row that had scrolled off would come back carrying the look it had
-                // then: stepping onto the row just below the window would leave it unhighlighted and
-                // the cursor would vanish from the screen. With the cache at zero a row that comes into
-                // view is taken from the pool, which always rebinds, so the state on screen can only
-                // ever be the state the adapter would paint now.
-                //
-                // What that looks like when it is NOT held at zero, measured on Settings with the
-                // wheel logged: stepping up onto a row above the window, `paint` finds nothing to
-                // rebind (the row is not attached) and hands the job to the scroll — and the layout
-                // then serves that position out of `mCachedViews`, which returns a BOUND holder
-                // untouched. So the row arrived carrying the look it had when it left, the cursor
-                // was nowhere on screen, and because the adapter's bind is also what calls
-                // `refreshRight`, the preview beside the list stayed on the row before last.
-                rv.setItemViewCacheSize(0);
+            stepAt = SystemClock.uptimeMillis();
+            if (pos != lastPos) Loop.moved();
+            tune(rv);
 
-                // ...except that setItemViewCacheSize is NOT the last word on the cache's size.
-                // GapWorker's LayoutPrefetchRegistryImpl records how many rows a scroll asked to
-                // prefetch in LayoutManager.mPrefetchMaxCountObserved and then calls
-                // Recycler.updateViewCacheSize(), which sets mViewCacheMax = mRequestedCacheMax +
-                // that number — so the cache we just zeroed comes back holding one or two rows,
-                // keyed by position and returned WITHOUT a rebind. The trigger is our own
-                // scrollTo(): rv.scrollBy() goes through scrollByInternal, which posts to the gap
-                // worker, and that is the path taken exactly when the cursor steps onto a partially
-                // visible row — i.e. at the edge of the screen. So a row that scrolled off and came
-                // back arrived carrying its old look and the highlight vanished, "sometimes", when
-                // scrolling at the edge onto rows beyond it (reported on Settings).
-                //
-                // setItemPrefetchEnabled(false) resets mPrefetchMaxCountObserved to 0 and
-                // re-runs updateViewCacheSize, so the cache stays at zero for good. Nothing is lost:
-                // prefetch exists to spend idle frame time inflating rows ahead of a fling, and this
-                // list is driven a row at a time by a wheel.
-                if (lm != null) lm.setItemPrefetchEnabled(false);
-            }
-
-            // Ask for the panel BEFORE the rows are rebound: `panelUpdate` paints it on the spot
-            // unless `busy` is already set, and the panel is the most expensive thing on the
-            // Settings screen — it belongs at the end of the burst, once.
+            // the panel BEFORE the rows: it belongs at the end of the burst, once
             postRest(rv, pos);
 
             if (adapter != null) {
                 int n = adapter.getItemCount();
-                // The remembered row is this list's only while the ADAPTER is the one it was
-                // worked out from: a screen that pages several lists through one RecyclerView
-                // hands back a cursor of its own, and repainting the row the PREVIOUS list left
-                // behind misses the highlighted one, which then stays on screen beside the real
-                // one. An unknown prev means a full repaint, which is the right answer.
+                // the remembered row counts only for the same ADAPTER; unknown = full repaint
                 int prev = (lastRv != null && lastRv.get() == rv
                         && lastAdapter != null && lastAdapter.get() == adapter) ? lastPos : -1;
-                // Rebound in place rather than through notifyItemChanged: a notify is an adapter
-                // update, and RecyclerView answers it with a full layout pass over every visible
-                // row, while two binds are what actually changed.
-                //
-                // Safe here in a way the ListView path is not (see Wheel.list, where the same idea
-                // was tried and reverted): this repaint is SYNCHRONOUS, so an accelerated key event
-                // taking several steps repaints every row it passes through, one pair at a time. The
-                // ListView path posts its repaint once per burst and therefore only ever fixes the
-                // two ends of it.
+                // past the end: Loop.mark's mark one beyond the list, as unknown as -1 (a wrap backwards)
+                if (prev >= n) prev = -1;
+                // In place, not notifyItemChanged (a full layout pass). Synchronous, so a burst
+                // repaints every row it passes.
                 if (prev < 0 || !paint(rv, adapter, prev, n) || !paint(rv, adapter, pos, n)) {
-                    adapter.notifyDataSetChanged();   // unknown state, or a row we could not reach
+                    adapter.notifyDataSetChanged();
                 }
+                // an unknown row before counts: the first step on entering may well be round the end.
+                // A step to the NEXT row is no wrap — on two rows both ends are next to each other,
+                // and only a wrap just taken (Loop.justWrapped) says it went round.
+                boolean ends = (prev == n - 1 || prev < 0) && pos == 0
+                        || (prev == 0 || prev < 0) && pos == n - 1;
+                wrapping = stickyWrap || n > 1 && ends
+                        && (prev < 0 || Math.abs(pos - prev) > 1 || Loop.justWrapped());
+                stickyWrap = false;
+            } else {
+                wrapping = false;
             }
-            lastRv = new WeakReference(rv);
-            lastAdapter = new WeakReference(adapter);
+            lastRv = same(lastRv, rv);
+            lastAdapter = same(lastAdapter, adapter);
             lastPos = pos;
 
             scrollTo(rv, pos);
         } catch (Throwable t) {
-            // a wheel click must never take the screen down
         }
     }
 
     /**
-     * Rebinds one row of a RecyclerView in place. True when the row is off screen (nothing to do)
-     * or was rebound; false means the caller has to fall back to notifying the adapter.
-     *
-     * {@code Adapter.bindViewHolder} is the very call RecyclerView makes itself, so the holder ends
-     * up in exactly the state a layout pass would have left it in — only without the layout pass.
+     * One row rebound in place by RecyclerView's own {@code bindViewHolder}. True = off screen or
+     * rebound; false = the caller notifies.
      */
     private static boolean paint(RecyclerView rv, RecyclerView.Adapter a, int p, int n) {
         try {
@@ -661,32 +352,21 @@ public final class Wheel {
             RecyclerView.LayoutManager lm = rv.getLayoutManager();
             if (!(lm instanceof LinearLayoutManager)) return false;
             View v = ((LinearLayoutManager) lm).findViewByPosition(p);
-            // Off screen: nothing to repaint, and it cannot come back stale — the view cache is
-            // held at zero for exactly that reason (see follow()).
+            // off screen cannot come back stale: the view cache is at zero
             if (v == null) return true;
             RecyclerView.ViewHolder h = rv.getChildViewHolder(v);
             if (h == null) return false;
             a.bindViewHolder(h, p);
             return true;
         } catch (Throwable t) {
-            return false;                                  // fall back to notifying the adapter
+            return false;
         }
     }
 
     /**
-     * Brings the row on screen — at once, not over an animation.
-     *
-     * Stock smooth-scrolled to the cursor on every click, and so did this method for a while. On a
-     * wheel that is wrong twice over: an animation takes several frames of layout and draw, so a
-     * click costs many times what moving a highlight should (measured on Settings: ~50 ms of CPU per
-     * click, against ~19 ms for the ListView screens), and the list is then always chasing a target
-     * the wheel has already left — which is what "let go of the wheel and it goes on scrolling"
-     * is. Every ListView screen in the app moves its window instantly; these now do the same, and
-     * the far case (the main menu wrapping from the last row round to the first) is a jump.
-     *
-     * The edge the row is put against follows the direction of travel, the rule {@code Wheel.list}
-     * already uses: going down the row belongs at the bottom edge, going up at the top. Snapping a
-     * downward step to the top would drag the list a whole screen further than asked.
+     * Bring the row on screen against the edge of the direction of travel: by {@link Glider} while
+     * animations are on, else at once. Never a smooth scroll restarted per click — the list would
+     * chase a target the wheel has left.
      */
     private static void scrollTo(RecyclerView rv, int pos) {
         RecyclerView.LayoutManager lm = rv.getLayoutManager();
@@ -695,26 +375,33 @@ public final class Wheel {
             return;
         }
         LinearLayoutManager l = (LinearLayoutManager) lm;
+        // round the end under a travelling bar: rows and bar move together, at once
+        if (!releasing && wrapping && Bar.defer(rv, pos)) return;
+        if (!jumping && retarget(rv, l, pos)) return;
         int first = l.findFirstCompletelyVisibleItemPosition();
         int last = l.findLastCompletelyVisibleItemPosition();
         if (first >= 0 && pos >= first && pos <= last) {
-            return;                                                  // already fully visible
+            // already fully visible, unless under a pinned plate (SongRows.top)
+            View fv = l.getOrientation() == LinearLayoutManager.HORIZONTAL ? null : l.findViewByPosition(pos);
+            if (fv == null || start(fv, false) >= SongRows.top(rv, pos)) return;
         }
+        if (!releasing && gliding.get(rv) != null && PlGrid.holds(rv, pos)) {
+            hold(rv);
+            return;
+        }
+        if (!jumping && glide(rv, l, pos, first, last)) return;
+        Glider.stop();                                               // a glide under way
+        rv.stopScroll();
 
         boolean down = first < 0 || pos > last;
-        // The keyboard's letter strip is the one horizontal list driven by the wheel (Keys), and
-        // everything below is the same arithmetic along the other axis — "top/bottom" read as
-        // "start/end edge" there. Nothing else changes: a step still moves the window by exactly
-        // how far the item is cut off, and the far case still puts it against the edge the cursor
-        // is travelling towards.
+        // the keyboard's letter strip is horizontal: the same arithmetic on the other axis
         boolean horiz = l.getOrientation() == LinearLayoutManager.HORIZONTAL;
-        int top = horiz ? rv.getPaddingLeft() : rv.getPaddingTop();
+        int top = horiz ? rv.getPaddingLeft() : SongRows.top(rv, pos);
         int bottom = horiz ? rv.getWidth() - rv.getPaddingRight()
                            : rv.getHeight() - rv.getPaddingBottom();
         View v = l.findViewByPosition(pos);
         if (v != null) {
-            // Partially visible, which is the ordinary case for a single step: move the window by
-            // exactly how far the row is cut off, so nothing else on screen shifts needlessly.
+            // partially visible: move by exactly how far it is cut off
             int d = down ? end(v, horiz) - bottom : start(v, horiz) - top;
             if (d != 0) {
                 if (horiz) rv.scrollBy(d, 0); else rv.scrollBy(0, d);
@@ -728,15 +415,380 @@ public final class Wheel {
         } else {
             rv.scrollToPosition(pos);
         }
+        // the step is drawn from a frame callback: a layout posted from here misses this frame
+        Fixed.layNow(rv);
+        // h is another row's height: rows differ (a disc strip), so the row is put to the edge by its own
+        if (down && !horiz) Settle.at(rv, pos, bottom);
+    }
+
+    /** After the layout that brought the row in, before its draw: its bottom against {@code bottom}. */
+    private static final class Settle implements android.view.ViewTreeObserver.OnPreDrawListener {
+        private final RecyclerView rv;
+        private final int pos, bottom;
+
+        private Settle(RecyclerView rv, int pos, int bottom) {
+            this.rv = rv;
+            this.pos = pos;
+            this.bottom = bottom;
+        }
+
+        static void at(RecyclerView rv, int pos, int bottom) {
+            Settle s = new Settle(rv, pos, bottom);
+            if (!rv.isLayoutRequested() && s.fix()) return;
+            rv.getViewTreeObserver().addOnPreDrawListener(s);
+        }
+
+        /** False while the row is not laid out yet. */
+        private boolean fix() {
+            RecyclerView.LayoutManager lm = rv.getLayoutManager();
+            View v = lm == null ? null : lm.findViewByPosition(pos);
+            if (v == null) return false;
+            int d = end(v, false) - bottom;
+            if (d != 0) rv.scrollBy(0, d);
+            return true;
+        }
+
+        public boolean onPreDraw() {
+            try {
+                rv.getViewTreeObserver().removeOnPreDrawListener(this);
+                fix();
+            } catch (Throwable t) {
+            }
+            return true;
+        }
     }
 
     /**
-     * The edges of a row INCLUDING its margins, which is what the list steps by. The rows this
-     * started with are flush with their neighbours, so {@code getTop()} was the same thing; the
-     * tiles of the theme and wallpaper grids carry a margin, and measuring without it left every
-     * step a few pixels short for the next click to "settle". {@code scrollToPositionWithOffset}
-     * counts margins too, so both readings here have to.
+     * The scroll a {@link Bar} deferred, once it has faded out — at once: a glide here is time
+     * with neither bar nor colour on screen.
      */
+    static void jumpNow(RecyclerView rv, int pos) {
+        try {
+            if (rv == null || rv.getWindowToken() == null) return;
+            Glider.stop();
+            releasing = true;
+            jumping = true;
+            scrollTo(rv, pos);
+        } catch (Throwable t) {
+        } finally {
+            releasing = false;
+            jumping = false;
+        }
+    }
+
+    private static boolean jumping;
+
+    /**
+     * A grid's rows waiting for the cursor's frame to end its way along a row (PlGrid.holds);
+     * the frame lets them go, and a timer does if it never does.
+     */
+    private static WeakReference heldRv;
+    private static boolean heldWrap;
+    private static boolean releasing;
+    private static final long HOLD_MAX_MS = 500L;
+    private static final android.os.Handler UI = new android.os.Handler(android.os.Looper.getMainLooper());
+    private static final Release RELEASE = new Release();
+
+    private static void hold(RecyclerView rv) {
+        heldWrap = held(rv) && heldWrap || wrapping;
+        heldRv = new WeakReference(rv);
+        UI.removeCallbacks(RELEASE);
+        UI.postDelayed(RELEASE, HOLD_MAX_MS);
+    }
+
+    static boolean held(RecyclerView rv) {
+        return rv != null && heldRv != null && heldRv.get() == rv;
+    }
+
+    /** Posted: the frame asks from inside the list's draw, where a scroll must not run. */
+    static void releaseSoon(RecyclerView rv) {
+        if (!held(rv)) return;
+        UI.removeCallbacks(RELEASE);
+        UI.post(RELEASE);
+    }
+
+    static final class Release implements Runnable {
+        public void run() {
+            RecyclerView rv = heldRv == null ? null : (RecyclerView) heldRv.get();
+            heldRv = null;
+            boolean w = wrapping;
+            try {
+                if (rv == null || rv.getAdapter() == null || rv.getWindowToken() == null) return;
+                wrapping = heldWrap;
+                // the timer's release too: the frame may still be on its way, the rows go anyway
+                releasing = true;
+                scrollTo(rv, PlGrid.cursorAt(rv));
+            } catch (Throwable t) {
+            } finally {
+                releasing = false;
+                heldWrap = false;
+                wrapping = w;
+            }
+        }
+    }
+
+    /** Grids whose rows slide into view rather than jump: a row of tiles is a big step. */
+    private static final java.util.WeakHashMap gliding = new java.util.WeakHashMap();
+
+    /** A grid asks for it (PlGrid), a list does with its travelling {@link Bar}. */
+    public static void glides(RecyclerView rv, boolean on) {
+        if (rv == null) return;
+        if (on) {
+            gliding.put(rv, Boolean.TRUE);
+        } else {
+            gliding.remove(rv);
+            if (Glider.left(rv) != 0) Glider.stop();
+        }
+    }
+
+    /**
+     * Rows past the edge of a gliding grid: the distance to where the cursor's row will be
+     * against the edge, measured from where the rows are NOW, handed to {@link Glider}. Further
+     * than a few rows, the instant scroll.
+     */
+    private static boolean glide(RecyclerView rv, LinearLayoutManager l, int pos, int first, int last) {
+        if (!(l instanceof androidx.recyclerview.widget.GridLayoutManager)) return glideList(rv, l, pos, first, last);
+        if (gliding.get(rv) == null || first < 0) return false;
+        int span = ((androidx.recyclerview.widget.GridLayoutManager) l).getSpanCount();
+        boolean down = pos > last;
+        View edge = l.findViewByPosition(down ? last : first);
+        if (span <= 0 || edge == null) return false;
+        int rows = down ? pos / span - last / span : first / span - pos / span;
+        // round the end the rows jump, as a list's do
+        if (wrapping || rows < 1 || rows > GLIDE_ROWS) return false;
+        int step = end(edge, false) - start(edge, false);
+        int d = down ? end(edge, false) + rows * step - (rv.getHeight() - rv.getPaddingBottom())
+                     : start(edge, false) - rows * step - rv.getPaddingTop();
+        Glider.to(rv, d, 0);
+        return true;
+    }
+
+    /**
+     * A list that asked for it ({@link #glides}, the lists with a travelling {@link Bar}) glides
+     * only round its end; a step past the edge moves the rows at once, so the next row lands under
+     * the bar standing there in the same frame. A row not laid out yet is estimated, and the glide
+     * re-aims at it exactly once it is ({@link Glider#aim}).
+     */
+    private static boolean glideList(RecyclerView rv, LinearLayoutManager l, int pos, int first, int last) {
+        if (!wrapping || first < 0 || l.getOrientation() != LinearLayoutManager.VERTICAL || gliding.get(rv) == null) {
+            return false;
+        }
+        boolean down = pos > last;
+        int top = SongRows.top(rv, pos);
+        int bottom = rv.getHeight() - rv.getPaddingBottom();
+        View v = l.findViewByPosition(pos);
+        int rows = down ? pos - last : first - pos;
+        if (rows < 1 || rows > (wrapping ? WRAP_LIST_ROWS : GLIDE_ROWS)) return false;
+        int d, step;
+        if (v != null) {
+            step = end(v, false) - start(v, false);
+            d = down ? end(v, false) - bottom : start(v, false) - top;
+        } else {
+            View edge = l.findViewByPosition(down ? last : first);
+            if (edge == null) return false;
+            step = end(edge, false) - start(edge, false);
+            d = down ? end(edge, false) + rows * step - bottom : start(edge, false) - rows * step - top;
+        }
+        if (d == 0) return true;
+        listGlide(rv, d, wrapping ? Math.min(WRAP_MAX_MS, WRAP_MS + WRAP_ROW_MS * rows) : 0, pos, down, step);
+        return true;
+    }
+
+    /**
+     * A list's glide trails the cursor by half a row at most: what is beyond goes at once. Behind
+     * by more, a fast wheel kept the rows pressed against one edge and they sprang back when it
+     * stopped, and the bar stood over a row that was not the cursor's.
+     */
+    private static void listGlide(RecyclerView rv, int d, int ms, int pos, boolean down, int h) {
+        int lead = h / 2;
+        if (ms == 0 && lead > 0 && Math.abs(d) > lead) {
+            int ex = d > 0 ? d - lead : d + lead;
+            Glider.stop();
+            rv.scrollBy(0, ex);
+            d -= ex;
+        }
+        Glider.to(rv, d, ms);
+        Glider.aim(pos, down);
+    }
+
+    /**
+     * While a glide is under way, "is the row on screen" is asked of where the rows WILL stand: a
+     * row on screen now may be carried off by what is left of the glide (the wheel turned back).
+     */
+    private static boolean retarget(RecyclerView rv, LinearLayoutManager l, int pos) {
+        float left = Glider.left(rv);
+        if (left == 0 || l instanceof androidx.recyclerview.widget.GridLayoutManager) return false;
+        View v = l.findViewByPosition(pos);
+        if (v == null) return false;
+        int top = SongRows.top(rv, pos);
+        int bottom = rv.getHeight() - rv.getPaddingBottom();
+        int s = Math.round(left);
+        int vt = start(v, false) - s;
+        int vb = end(v, false) - s;
+        int extra = vb > bottom ? vb - bottom : vt < top ? vt - top : 0;
+        if (extra != 0) listGlide(rv, s + extra, 0, pos, extra > 0, vb - vt);
+        return true;
+    }
+
+    /** Further behind than this, the list jumps: a glide that far would trail the wheel. */
+    private static final int GLIDE_ROWS = 4;
+
+    /** A list round its end glides only this far; a long one binds every row it passes. */
+    private static final int WRAP_LIST_ROWS = 15;
+
+    /** The cursor has just gone round the list's end: glided however far that is. */
+    private static boolean wrapping;
+
+    /** Round the end the rows ease in over a time growing with the rows passed, not past a cap. */
+    private static final int WRAP_MS = 180;
+    private static final int WRAP_ROW_MS = 45;
+    private static final int WRAP_MAX_MS = 450;
+
+    /**
+     * Follows the target on a spring: the list sets off and eases in softly. A new target only
+     * changes what is left and keeps the speed — nothing restarts, so a fast wheel gives one
+     * continuous movement instead of glides cut short and begun again at another speed.
+     */
+    static final class Glider implements android.view.Choreographer.FrameCallback {
+        /**
+         * The rows on the lists' bar spring (Bar), critically damped: they start and land gently
+         * and never run past the row. A new target keeps the speed, so a turning wheel bends the
+         * glide.
+         */
+        private static final float OMEGA = 30f;
+        /** The rows' speed, px/s (+ down), and the part of a pixel not yet scrolled. */
+        private static float vel, frac;
+
+        private static final Glider G = new Glider();
+        private static WeakReference view = new WeakReference(null);
+        private static float left;
+        private static long last;
+        private static boolean running;
+        /** A timed glide: its length, its distance and when it set out. */
+        private static int easeMs, easeTotal;
+        private static long easeAt;
+
+        /** {@code ms} above 0: over that time, easing out, instead of the spring. */
+        static void to(RecyclerView rv, int d, int ms) {
+            if (view.get() != rv) {
+                stop();
+                view = new WeakReference(rv);
+            }
+            rv.stopScroll();
+            if (!running) {
+                vel = 0f;
+                frac = 0f;
+            }
+            left = d;
+            aimPos = -1;
+            easeMs = ms;
+            easeTotal = d;
+            easeAt = 0;
+            if (!running && d != 0) {
+                running = true;
+                last = 0;
+                android.view.Choreographer.getInstance().postFrameCallback(G);
+            }
+        }
+
+        static void stop() {
+            if (running) android.view.Choreographer.getInstance().removeFrameCallback(G);
+            running = false;
+            left = 0;
+            aimPos = -1;
+        }
+
+        /** The row the glide brings to an edge; while it is off screen the distance is a guess. */
+        private static int aimPos = -1;
+        private static boolean aimDown;
+
+        static void aim(int pos, boolean down) {
+            aimPos = pos;
+            aimDown = down;
+        }
+
+        /**
+         * The list's end in the direction of travel, told by the edge row itself — not by
+         * computeVerticalScrollOffset, an estimate that can come out unchanged in the frame a row
+         * enters and another leaves, which stopped glides short of the last row.
+         */
+        private static boolean atEnd(RecyclerView rv, boolean down) {
+            RecyclerView.Adapter a = rv.getAdapter();
+            int n = rv.getChildCount();
+            if (a == null || n == 0) return true;
+            View v = rv.getChildAt(down ? n - 1 : 0);
+            int p = rv.getChildAdapterPosition(v);
+            if (down) return p == a.getItemCount() - 1 && end(v, false) <= rv.getHeight() - rv.getPaddingBottom();
+            return p == 0 && start(v, false) >= rv.getPaddingTop();
+        }
+
+        /** The guess replaced by the row's own edge once the row is laid out. */
+        private static void reaim(RecyclerView rv) {
+            if (aimPos < 0) return;
+            RecyclerView.LayoutManager lm = rv.getLayoutManager();
+            View v = lm instanceof LinearLayoutManager ? ((LinearLayoutManager) lm).findViewByPosition(aimPos) : null;
+            if (v == null) return;
+            int exact = aimDown ? end(v, false) - (rv.getHeight() - rv.getPaddingBottom())
+                                : start(v, false) - SongRows.top(rv, aimPos);
+            if (easeMs > 0) easeTotal += Math.round(exact - left);
+            left = exact;
+            aimPos = -1;
+        }
+
+        /** The scroll still to come on {@code rv}, in pixels, + down. */
+        static float left(RecyclerView rv) {
+            return running && view.get() == rv ? left : 0f;
+        }
+
+        public void doFrame(long nanos) {
+            RecyclerView rv = (RecyclerView) view.get();
+            if (rv != null) reaim(rv);
+            if (rv == null || rv.getWindowToken() == null || left == 0) {
+                running = false;
+                left = 0;
+                return;
+            }
+            long now = nanos / 1000000L;
+            float dt = last == 0 ? 0.016f : Math.min(0.05f, (now - last) / 1000f);
+            last = now;
+            int s;
+            if (easeMs > 0) {
+                if (easeAt == 0) easeAt = now - 16;
+                float t = Math.min(1f, (now - easeAt) / (float) easeMs);
+                float u = 1f - t;
+                s = t >= 1f ? Math.round(left)
+                        : Math.round(easeTotal * (1f - u * u * u)) - Math.round(easeTotal - left);
+            } else {
+                float e = -left;
+                float c = vel + OMEGA * e;
+                float ex = (float) Math.exp(-OMEGA * dt);
+                float ne = (e + c * dt) * ex;
+                vel = (vel - OMEGA * c * dt) * ex;
+                if (Math.abs(ne) < 0.5f && Math.abs(vel) < 15f) {
+                    s = Math.round(left);
+                    vel = 0f;
+                    frac = 0f;
+                } else {
+                    frac += ne - e;
+                    s = Math.round(frac);
+                    frac -= s;
+                }
+            }
+            long t0 = android.os.SystemClock.uptimeMillis();
+            rv.scrollBy(0, s);
+            if (android.os.SystemClock.uptimeMillis() - t0 >= 4) Frames.part("scroll", t0);
+            left -= s;
+            if (Math.abs(left) < 1f && Math.abs(vel) < 15f || atEnd(rv, left > 0)) left = 0;
+            if (left != 0) {
+                Loop.animating();
+                android.view.Choreographer.getInstance().postFrameCallback(this);
+            } else {
+                running = false;
+            }
+        }
+    }
+
+    /** A row's edges INCLUDING margins, as the list steps (the gallery tiles have margins). */
     private static int start(View v, boolean horiz) {
         ViewGroup.MarginLayoutParams lp = margins(v);
         if (horiz) return v.getLeft() - (lp == null ? 0 : lp.leftMargin);
@@ -754,47 +806,33 @@ public final class Wheel {
         return lp instanceof ViewGroup.MarginLayoutParams ? (ViewGroup.MarginLayoutParams) lp : null;
     }
 
-    // ---- where a level of a multi-level screen was left ----------------------------------------
-    //
-    // A screen that pages several lists through one ListView comes back up with stock's
-    // Other.gotoAdapter(lv, a, -1), i.e. setAdapter + setSelection(getPosition()) — which parks the
-    // row the user picked on the TOP edge and scrolls everything they were looking at away. Albums
-    // got its own answer for this (Albums.noteListScroll/restoreList); Genres has three levels, so
-    // the note is kept PER ADAPTER instead of in one pair of fields — each level has an adapter of
-    // its own (genres, artists, albums, songs), which makes the adapter the natural key. The map is
-    // weak, so a finished Activity's adapters are not held.
+    // Where each level of a multi-level screen (Genres) was left, per ADAPTER: stock's way back
+    // parks the picked row on the TOP edge.
     private static final java.util.WeakHashMap level = new java.util.WeakHashMap();
 
     /** Called where the user descends a level: remember where THIS list stands. */
-    public static void noteLevel(ListView lv) {
+    public static void noteLevel(RecyclerView rv) {
         try {
-            if (lv == null) return;
-            Object a = lv.getAdapter();
-            if (!(a instanceof MyBaseAdapter)) return;
-            View top = lv.getChildAt(0);
-            level.put(a, new int[] {
-                    lv.getFirstVisiblePosition(),
-                    top == null ? 0 : top.getTop(),        // absolute; see Head.restore
-                    ((MyBaseAdapter) a).getPosition()
-            });
+            MyBaseAdapter a = Lv.model(rv);
+            if (a == null || rv.getChildCount() == 0) return;
+            View top = rv.getChildAt(0);
+            level.put(a, new int[] {Lv.first(rv), top.getTop(), a.getPosition()});
         } catch (Throwable t) {
-            // a list that comes back at the top is still a usable list
         }
     }
 
     /** In place of {@code Other.gotoAdapter(lv, a, -1)} on the way back up. */
-    public static void gotoLevel(ListView lv, MyBaseAdapter a) {
-        if (lv == null || a == null) return;
-        lv.setAdapter(a);
+    public static void gotoLevel(RecyclerView rv, MyBaseAdapter a) {
+        if (rv == null || a == null) return;
+        SongRows.set(rv, a);
         int pos = a.getPosition();
-        Object o = level.remove(a);                       // one restore per note
+        Object o = level.remove(a);
         int[] st = (o instanceof int[]) ? (int[]) o : null;
-        if (st != null && st[0] >= 0 && st[0] < a.getCount() && st[2] == pos) {
-            // Head.restore, not setSelectionFromTop: coming back up a level the Shuffle row may
-            // still be on its way out, so the list's padding is about to change underneath.
-            Head.restore(lv, st[0], st[1]);
+        if (st != null && st[0] >= -SongRows.heads(rv) && st[0] < a.getCount() && st[2] == pos) {
+            Lv.place(rv, st[0], st[1]);
         } else {
-            lv.setSelection(pos);
+            SongRows.select(rv, pos);
         }
     }
+
 }

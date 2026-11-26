@@ -27,67 +27,38 @@ import java.util.Locale;
 import java.util.Map;
 
 /**
- * One file the user can attach to a bug report, and the debug mode that makes the device
- * worth logging in the first place.
- *
- * The report
- * "Save diagnostic log" in [Tools] writes {@code better-Y/logs/log_<date>_<time>.log} to the CARD,
- * beside the crash logs: the report has to be readable later, over USB, from a device that may
- * never be next to a PC. It holds four things, because a report answering only one of them tends to need a second
- * round of questions: what build this is and what it is running on, what the mod is set to, what
- * the library looks like, and the tail of both logcat buffers.
- *
- * The one thing the button cannot fix is the age of the buffer. `logcat`'s ring is small and,
- * while music plays, `AudioFlinger` fills it in about twenty seconds (skill `ipp-device-testing`),
- * so a snapshot taken minutes after a defect may no longer carry it. That is what the debug mode is
- * for, and it is also why it is worth saying plainly: the log is most useful pressed straight away.
- *
- * The debug mode
- * Stock Timber logging is off in this build for a measured reason ({@code Y1Application$TimberTree}
- * — skill `ipp-perf-profiling`), and it is switched back on by a file on the card, read once at
- * {@code <clinit>}. Creating that file needs a PC, which is exactly what a user filing a bug report
- * does not have to hand. So it is toggled from the device instead: **five centre presses on Settings →
- * About**. Not a menu row, because it is not a feature — it costs speed everywhere, needs a reboot
- * to take effect, and a user who has not been asked for it has no business finding it. The same
- * five presses turn it off again.
+ * "Save diagnostic log" ([Tools]): one file on the card to attach to a bug report — build,
+ * settings, library, the app's own log ring and the logcat tails. And the hidden debug mode (stock
+ * Timber logging, off for speed): five centre presses on Settings → About, not a menu row — it
+ * costs speed everywhere and needs a reboot.
  */
 public final class Diag {
 
     private Diag() { }
 
-    /**
-     * The marker {@code Y1Application$TimberTree.<clinit>} reads. Hard-coded there as a literal, so
-     * it is hard-coded here too — the two must agree, and there is nowhere shared to put it that
-     * stock smali could reach as cheaply.
-     */
+    /** Also a literal in {@code Y1Application$TimberTree.<clinit>}: the two must agree. */
     static final String MARK = "/storage/sdcard0/better-Y/debug_log";
 
-    /**
-     * The name a spilled ring is written under. "crash" rather than "state" because the person
-     * asked for the file is the person who has just had one, and it has to be obvious which file
-     * that is.
-     */
+    /** A spilled ring's file name. */
     private static final String CRASH = "crash_";
 
-    /** Presses on About that toggle the debug mode. */
     private static final int TAPS = 5;
 
-    /** A gap longer than this starts the count over: five presses, not five presses ever. */
+    /** A longer gap starts the count over. */
     private static final long GAP_MS = 2000L;
 
     /** How much of one command's output is kept. */
     private static final int CAP = 256 * 1024;
 
     /**
-     * The whole main buffer, taken in the debug mode. {@link Panel#exec} keeps the HEAD and logcat
-     * prints oldest first, so this must exceed the ring as text or the newest lines are cut.
+     * The whole main buffer. {@link Panel#exec} keeps the HEAD, logcat prints
+     * oldest first: this must exceed the ring as text or the newest lines are cut.
      */
     private static final int MAIN_CAP = 1024 * 1024;
 
     private static int taps;
     private static long lastTap;
 
-    /** Is the verbose (stock) logging mode on? */
     static boolean on() {
         try {
             return new File(MARK).isFile();
@@ -96,34 +67,10 @@ public final class Diag {
         }
     }
 
-    // ------------------------------------------------------------------ the app's own log ring
-
     /**
-     * The last {@value #RING} messages the app logged, kept in memory — the half of the report that
-     * logcat cannot be relied on for.
-     *
-     * Three facts decide this design, and all three are measured (skill `ipp-perf-profiling`):
-     *
-     *   - The messages are already built. A Kotlin {@code Timber.d("… $x")} assembles its
-     *       string at the call site, before any tree, any tag and any filter — so today the app
-     *       pays for ~905 call sites' worth of text and then throws it away. Keeping a reference to
-     *       what already exists costs a store, not a formatting pass.
-     *   - What was expensive is the TAG, not the text. {@code DebugTree.getTag} takes a
-     *       stack trace per call; that is why quiet mode exists at all, and it stays off here — the
-     *       ring keeps the constant tag.
-     *   - logcat's ring is not ours. It holds ~256 KB for the whole system, and while
-     *       music plays {@code AudioFlinger} fills it in about twenty seconds, so a report saved a
-     *       minute after a defect has already lost it. These 2000 entries are the app's alone, so
-     *       they cover minutes of its work whatever the system is shouting about.
-     *
-     * Nothing here writes to a file or to the log driver: a record is a timestamp, a priority
-     * and two references. The file is only ever built in {@link #report}.
-     *
-     * What reaches it is decided in {@code TimberTree.isLoggable}, at INFO. Keeping
-     * DEBUG as well was measured and dropped: it is where stock's per-bind and per-click chatter
-     * lives — several messages per wheel click, hundreds per screen open — and letting it through
-     * cost ~9 ms on opening a list, because Timber then stops taking its early exit and the
-     * messages stop dying young. The wheel never noticed either way.
+     * The app's last messages in memory: logcat's ring is shared and AudioFlinger fills it in
+     * seconds. A record is a store of already-built strings — no file, no log driver, no stack-trace
+     * tag. INFO and up only ({@code TimberTree.isLoggable}): DEBUG cost ~9 ms per list opened.
      */
     private static final int RING = 2000;
 
@@ -135,11 +82,7 @@ public final class Diag {
     /** Total records ever stored; the ring holds the last RING of them. */
     private static int ringN;
 
-    /**
-     * Called from {@code Y1Application$TimberTree.log} for every message the app logs, whatever its
-     * priority. Synchronized because Timber is called from every thread the app has; the block is
-     * four stores long, so the lock is never held long enough to be contended in practice.
-     */
+    /** From {@code Y1Application$TimberTree.log}, on any thread. */
     public static synchronized void ring(int priority, String tag, String message, Throwable t) {
         try {
             if (!armed) arm();
@@ -147,29 +90,273 @@ public final class Diag {
             ringWhen[i] = System.currentTimeMillis();
             ringPri[i] = priority;
             ringTag[i] = tag;
-            // A throwable is rare (an error path) and its stack is the whole point of the record,
-            // so it is flattened now — the objects behind it must not be kept alive until the
-            // report is written.
+            // flattened now, so the throwable's objects are not kept alive
             ringMsg[i] = t == null ? message
                     : message + '\n' + android.util.Log.getStackTraceString(t);
             ringN++;
         } catch (Throwable e) {
-            // logging must never be able to break the thing it is logging
         }
     }
 
     /**
-     * The mod's own voice in the log. Everything in {@code com/innioasis/ipp/} is silent by design
-     * — a shipped build carries no {@code Log.e} — which meant the report described stock in
-     * detail and said nothing at all about the half of the device the user is actually reporting
-     * on. These are the decisions worth a line: a cache dropped, a folder deleted, an encoding
-     * guessed, the queue rebuilt. They are rare events, so the ring stays readable.
+     * Development measurements: collector pauses after {@code slow:}, every frame gap of an
+     * animation, the Cover Flow lines written always. A compile-time constant, so false leaves
+     * them out of the dex; true brings them back.
      */
+    public static final boolean MEASURE = false;
+
+    /** The mod's own voice in the log: rare decisions worth a line, never per-row chatter. */
     public static void note(String message) {
         ring(4 /* INFO */, "ipp", message, null);
+        if (message != null && message.startsWith("slow:")) {
+            if (MEASURE) Gc.request();
+            if (message.startsWith("slow: frames")) Heap.once();
+        }
     }
 
-    /** Oldest first, in logcat's own shape so the two halves of the report read alike. */
+    /** Diag.MEASURE: who ran on the CPU over the next 300 ms, written as one {@code cpu} line. */
+    public static void cpu(String why) {
+        if (MEASURE) Cpu.request(why);
+    }
+
+    /**
+     * Two snapshots of /proc 300 ms apart: the whole CPU (/proc/stat), our process and each of
+     * its threads, the busiest named. Ticks are 10 ms. Reads files only, starts no process.
+     */
+    static final class Cpu implements Runnable {
+        private static volatile boolean running;
+        private final String why;
+
+        private Cpu(String why) { this.why = why; }
+
+        static void request(String why) {
+            if (running) return;
+            running = true;
+            try {
+                Thread t = new Thread(new Cpu(why), "ipp-cpu");
+                t.setPriority(Thread.MAX_PRIORITY);
+                t.start();
+            } catch (Throwable e) {
+                running = false;
+            }
+        }
+
+        public void run() {
+            try {
+                long[] c0 = total();
+                java.util.HashMap a = threads();
+                Thread.sleep(300);
+                long[] c1 = total();
+                java.util.HashMap b = threads();
+                long all = c1[0] - c0[0], busy = c1[1] - c0[1];
+                ArrayList rows = new ArrayList();
+                long ours = 0;
+                Iterator it = b.entrySet().iterator();
+                while (it.hasNext()) {
+                    Map.Entry e = (Map.Entry) it.next();
+                    Object[] v = (Object[]) e.getValue();
+                    Object[] w = (Object[]) a.get(e.getKey());
+                    long d = ((Long) v[1]).longValue() - (w == null ? 0 : ((Long) w[1]).longValue());
+                    if (d <= 0) continue;
+                    ours += d;
+                    rows.add(new Object[] { v[0] + " " + e.getKey(), Long.valueOf(d) });
+                }
+                Collections.sort(rows, new ByTicks());
+                StringBuilder s = new StringBuilder("cpu ").append(why)
+                        .append(": busy ").append(all > 0 ? busy * 100 / all : 0).append('%')
+                        .append(", ours ").append(ours * 10).append(" ms, others ")
+                        .append(Math.max(0, busy - ours) * 10).append(" ms of ").append(all * 10).append(" ms;");
+                for (int i = 0; i < rows.size() && i < 6; i++) {
+                    Object[] r = (Object[]) rows.get(i);
+                    s.append(' ').append(r[0]).append(' ').append(((Long) r[1]).longValue() * 10);
+                }
+                String p = playing();
+                if (p != null) s.append("; playing ").append(p);
+                note(s.toString());
+            } catch (Throwable e) {
+            } finally {
+                running = false;
+            }
+        }
+
+        /** All ticks and busy ticks of every CPU together. */
+        private static long[] total() throws java.io.IOException {
+            String l = read("/proc/stat");
+            int nl = l.indexOf('\n');
+            String[] f = (nl > 0 ? l.substring(0, nl) : l).trim().split("\\s+");
+            long all = 0, idle = 0;
+            for (int i = 1; i < f.length; i++) {
+                long v = Long.parseLong(f[i]);
+                all += v;
+                if (i == 4 || i == 5) idle += v;     // idle, iowait
+            }
+            return new long[] { all, all - idle };
+        }
+
+        /** tid -> { name, utime+stime } for every thread of this process. */
+        private static java.util.HashMap threads() {
+            java.util.HashMap m = new java.util.HashMap();
+            String[] ts = new File("/proc/self/task").list();
+            if (ts == null) return m;
+            for (int i = 0; i < ts.length; i++) {
+                try {
+                    String st = read("/proc/self/task/" + ts[i] + "/stat");
+                    int o = st.indexOf('('), c = st.lastIndexOf(')');
+                    String[] f = st.substring(c + 2).trim().split(" ");
+                    long t = Long.parseLong(f[11]) + Long.parseLong(f[12]);
+                    m.put(ts[i], new Object[] { st.substring(o + 1, c), Long.valueOf(t) });
+                } catch (Throwable e) {
+                }
+            }
+            return m;
+        }
+
+        private static String read(String path) throws java.io.IOException {
+            java.io.FileInputStream in = new java.io.FileInputStream(path);
+            try {
+                byte[] b = new byte[1024];
+                int n = in.read(b);
+                return n <= 0 ? "" : new String(b, 0, n, "US-ASCII");
+            } finally {
+                in.close();
+            }
+        }
+
+        private static String playing() {
+            try {
+                com.innioasis.y1.service.PlayerService s = Y1Application.Companion.getPlayerService();
+                Song song = s == null ? null : s.getPlayingSong();
+                String p = song == null ? null : song.getPath();
+                if (p == null) return null;
+                int d = p.lastIndexOf('.');
+                return d < 0 ? p : p.substring(d);
+            } catch (Throwable e) {
+                return null;
+            }
+        }
+    }
+
+    static final class ByTicks implements java.util.Comparator {
+        public int compare(Object x, Object y) {
+            long a = ((Long) ((Object[]) x)[1]).longValue(), b = ((Long) ((Object[]) y)[1]).longValue();
+            return a > b ? -1 : a < b ? 1 : 0;
+        }
+    }
+
+    /**
+     * A heap dump to better-Y/logs at the first stuttering animation of the run and with every
+     * "Save diagnostic log" — only while the empty file better-Y/heap_dump exists (put there by
+     * hand over USB). Every thread stops for the seconds the dump takes, so it is never on by itself.
+     */
+    static final class Heap implements Runnable {
+        private static boolean asked;
+
+        static boolean flagged() {
+            return new File(Panel.card(), "heap_dump").isFile();
+        }
+
+        static void once() {
+            synchronized (Heap.class) {
+                if (asked) return;
+                asked = true;
+            }
+            try {
+                if (!flagged()) return;
+                Thread t = new Thread(new Heap(), "ipp-diag-heap");
+                t.setDaemon(true);
+                t.start();
+            } catch (Throwable t) {
+            }
+        }
+
+        public void run() {
+            try {
+                File f = new File(Panel.logs(), "heap_" + Panel.stamp() + ".hprof");
+                android.os.Debug.dumpHprofData(f.getPath());
+                note("heap dumped to " + f.getName());
+            } catch (Throwable t) {
+                note("heap dump failed: " + t);
+            }
+        }
+    }
+
+    /**
+     * After a {@code slow:} line, the app's own collector pauses from logcat go into the ring
+     * with it: logcat's buffer turns over in seconds while music plays, so a report taken a
+     * minute later no longer says whether a GC stopped the app at that moment. A process
+     * is started only after a slow step, one at a time.
+     */
+    static final class Gc implements Runnable {
+        private static boolean running;
+        private static String lastLine;     // the newest line already in the ring
+
+        static void request() {
+            if (Fm.busy()) return;                  // Panel.exec would refuse anyway
+            synchronized (Gc.class) {
+                if (running) return;
+                running = true;
+            }
+            Thread t = new Thread(new Gc(), "ipp-diag-gc");
+            t.setDaemon(true);
+            t.start();
+        }
+
+        public void run() {
+            try {
+                String out = Panel.exec(new String[]{"/system/bin/logcat", "-d", "-b", "main",
+                        "-v", "time", "dalvikvm:D", "*:S"}, CAP);
+                String mine = "(" + android.os.Process.myPid() + "):";
+                String[] lines = out.split("\n");
+                List keep = new ArrayList();
+                for (int i = lines.length - 1; i >= 0 && keep.size() < 20; i--) {
+                    String l = lines[i].trim();
+                    if (l.equals(lastLine)) break;
+                    // the pauses only: the class verifier's lines share the tag
+                    if (l.replace(" ", "").indexOf(mine) >= 0 && (l.indexOf("GC_") >= 0
+                            || l.indexOf("WAIT_FOR_CONCURRENT_GC") >= 0 || l.indexOf("Grow heap") >= 0)) {
+                        keep.add(0, l);
+                    }
+                }
+                if (!keep.isEmpty()) lastLine = (String) keep.get(keep.size() - 1);
+                for (int i = 0; i < keep.size(); i++) ring(3 /* DEBUG */, "gc", (String) keep.get(i), null);
+            } catch (Throwable t) {
+            } finally {
+                synchronized (Gc.class) {
+                    running = false;
+                }
+            }
+        }
+    }
+
+    /** A step shorter than this leaves no line. */
+    private static final long SLOW_MS = 200L;
+
+    private static String markWhat;
+    private static long markAt;
+
+    /** A line when the step begun at uptime {@code since} ran long; nothing otherwise. */
+    public static void slow(String what, long since) {
+        long ms = SystemClock.uptimeMillis() - since;
+        if (ms >= SLOW_MS) note("slow: " + what + ' ' + ms + " ms");
+    }
+
+    /**
+     * {@link #slow} for a stock call site with no register to keep the time in: {@code mark}
+     * before the step, {@link #lap} after it. Main thread only, and never nested.
+     */
+    public static void mark(String what) {
+        markWhat = what;
+        markAt = SystemClock.uptimeMillis();
+    }
+
+    public static void lap() {
+        String what = markWhat;
+        if (what == null) return;
+        markWhat = null;
+        slow(what, markAt);
+    }
+
+    /** Oldest first, in logcat's shape. */
     private static synchronized void ringDump(StringBuilder s) {
         int have = ringN < RING ? ringN : RING;
         s.append("\n--- app log (last ").append(have).append(" of ").append(ringN)
@@ -200,51 +387,33 @@ public final class Diag {
         }
     }
 
-    // ------------------------------------------------------------------ surviving the crash
-
     /**
-     * The ring lives in the process, so a crash takes it with it — and a crash is exactly the case
-     * the report is wanted for. So the last thing the process does is write the ring out.
-     *
-     * Installed from the first {@link #ring} call rather than from {@code Y1Application}: the
-     * app's first Timber message is "Y1Application Init start", i.e. this is armed a few
-     * milliseconds into the process and no stock file has to be edited for it. Whatever handler
-     * was in place is kept and called afterwards — xCrash is initialised just before this point
-     * ({@code XCrash.init} in {@code Y1Application}) and writes the tombstone with the stack,
-     * the threads and the memory; ours adds the one thing it cannot know, which is what the app
-     * was doing beforehand.
+     * A crash writes the ring out. Armed by the first {@link #ring} call, milliseconds into the
+     * process; xCrash's handler is kept and called after ours.
      */
     private static boolean armed;
     private static Thread.UncaughtExceptionHandler prev;
 
     private static void arm() {
-        armed = true;                       // set first: a failure here must not retry per message
+        armed = true;                       // first: a failure must not retry per message
         try {
             prev = Thread.getDefaultUncaughtExceptionHandler();
             Thread.setDefaultUncaughtExceptionHandler(new Crash());
         } catch (Throwable t) {
-            // no handler, no crash file; the tombstone and logcat still carry the stack
         }
     }
 
-    /** Named (d8 here crashes on anonymous classes). */
     static final class Crash implements Thread.UncaughtExceptionHandler {
         public void uncaughtException(Thread th, Throwable e) {
             spill("uncaught exception on thread " + (th == null ? "?" : th.getName()), e);
             try {
                 if (prev != null) prev.uncaughtException(th, e);
             } catch (Throwable t) {
-                // ignore
             }
         }
     }
 
-    /**
-     * Write the ring to the card because the process is about to end — a crash, a force reboot.
-     * The report picks the newest of these up, so the history of a session
-     * that died survives into the next one; without it the ring, being memory, would be exactly
-     * as absent as the process.
-     */
+    /** The process is about to end (a crash, a force reboot): the ring goes to the card. */
     public static void spill(String why, Throwable e) {
         try {
             StringBuilder s = new StringBuilder(8192);
@@ -261,11 +430,9 @@ public final class Diag {
             write(new File(Panel.logs(), CRASH + Panel.stamp() + ".log"), s.toString());
             keepNewest(Panel.logs(), CRASH, 5);
         } catch (Throwable t) {
-            // whatever was about to happen matters more than this file
         }
     }
 
-    /** Write and flush to the card, or fail quietly. */
     private static void write(File f, String text) {
         FileOutputStream out = null;
         try {
@@ -274,17 +441,15 @@ public final class Diag {
             out.flush();
             out.getFD().sync();             // the process is about to end
         } catch (Throwable t) {
-            // ignore
         } finally {
             try {
                 if (out != null) out.close();
             } catch (Throwable t) {
-                // ignore
             }
         }
     }
 
-    /** Keep the newest {@code keep} files with this prefix; the card is not a log server. */
+    /** Keep the newest {@code keep} files with this prefix. */
     static void keepNewest(File dir, String prefix, int keep) {
         try {
             File[] fs = dir.listFiles();
@@ -293,27 +458,20 @@ public final class Diag {
             for (int i = 0; i < fs.length; i++) {
                 if (fs[i].isFile() && fs[i].getName().startsWith(prefix)) mine.add(fs[i]);
             }
-            // The names carry yyyyMMdd_HHmmss, so alphabetical order IS chronological order.
             Collections.sort(mine, new NameCmp());
             for (int i = 0; i < mine.size() - keep; i++) ((File) mine.get(i)).delete();
         } catch (Throwable t) {
-            // ignore
         }
     }
 
-    /** Named, raw (the bundled d8 crashes dexing generic Signature attributes). */
+    /** By name: the names carry yyyyMMdd_HHmmss, so this is chronological. */
     static final class NameCmp implements java.util.Comparator {
         public int compare(Object a, Object b) {
             return ((File) a).getName().compareTo(((File) b).getName());
         }
     }
 
-    // ------------------------------------------------------------------ the hidden switch
-
-    /**
-     * Injected into {@code AboutActivity.confirm()}, which is empty in stock — the centre press
-     * does nothing at all on that screen, so counting presses there takes nothing away.
-     */
+    /** Injected into {@code AboutActivity.confirm()}, which is empty in stock. */
     public static void about(Activity a) {
         try {
             long now = SystemClock.uptimeMillis();
@@ -325,11 +483,10 @@ public final class Diag {
             if (!set(want)) return;
             toast(a, want ? R.string.ipp_debug_on : R.string.ipp_debug_off);
         } catch (Throwable t) {
-            // a diagnostic that throws is worse than one that does nothing
         }
     }
 
-    /** Create or remove the marker. Returns false when the card would not have it. */
+    /** False when the card would not have it. */
     private static boolean set(boolean want) {
         try {
             File f = new File(MARK);
@@ -342,16 +499,13 @@ public final class Diag {
         }
     }
 
-    // ------------------------------------------------------------------ the report
-
-    /** [Tools] → "Save diagnostic log". Collected on a worker: it execs logcat and walks the card. */
+    /** [Tools] → "Save diagnostic log", on a worker. */
     public static void save(Activity a) {
         Thread t = new Thread(new Save(a), "ipp-diag");
         t.setDaemon(true);
         t.start();
     }
 
-    /** Named (d8 here crashes on anonymous classes). */
     static final class Save implements Runnable {
         private final Activity a;
 
@@ -360,6 +514,10 @@ public final class Diag {
         public void run() {
             File f = null;
             try {
+                if (Heap.flagged()) new Heap().run();
+            } catch (Throwable t) {
+            }
+            try {
                 f = report(a);
             } catch (Throwable t) {
                 // reported as a failure below
@@ -367,12 +525,10 @@ public final class Diag {
             try {
                 a.runOnUiThread(new Note(a, f));
             } catch (Throwable t) {
-                // the screen is gone; the file is written either way
             }
         }
     }
 
-    /** Back on the main thread: say where it went, or that it did not. */
     static final class Note implements Runnable {
         private final Activity a;
         private final File f;
@@ -387,12 +543,11 @@ public final class Diag {
                     toast(a, a.getString(R.string.ipp_log_done, f.getAbsolutePath()));
                 }
             } catch (Throwable t) {
-                // ignore
             }
         }
     }
 
-    /** Write the report and hand back the file, or null if nothing could be written. */
+    /** The report's file, or null. */
     public static File report(Context c) {
         FileOutputStream out = null;
         try {
@@ -409,9 +564,12 @@ public final class Diag {
                 s.append(Panel.exec(new String[]{"/system/bin/logcat", "-d", "-b", "main", "-v",
                         "time"}, MAIN_CAP));
             } else {
-                s.append("\n--- logcat -b main -v time (tail 800) ---\n");
+                // While music plays these four are most of the buffer, a line per 23 ms buffer;
+                // without them the buffer reaches minutes back instead of seconds
+                s.append("\n--- logcat -b main -v time (whole buffer, audio output lines left out) ---\n");
                 s.append(Panel.exec(new String[]{"/system/bin/logcat", "-d", "-b", "main", "-v",
-                        "time", "-t", "800"}, CAP));
+                        "time", "AudioFlinger:S", "AudioMTKStreamOut:S", "AudioTrack:S",
+                        "AudioMTKPolicyManager:S", "*:V"}, MAIN_CAP));
             }
             s.append("\n--- logcat -b system -v time (tail 300) ---\n");
             s.append(Panel.exec(new String[]{"/system/bin/logcat", "-d", "-b", "system", "-v",
@@ -428,7 +586,6 @@ public final class Diag {
             try {
                 if (out != null) out.close();
             } catch (Throwable t) {
-                // ignore
             }
         }
     }
@@ -448,9 +605,55 @@ public final class Diag {
         s.append("card     ").append(space(Constant.ROOT_PATH)).append('\n');
         s.append("internal ").append(space(Constant.INTERNAL_PATH)).append('\n');
         s.append("data     ").append(space("/data")).append('\n');
+        memory(s);
     }
 
-    /** "free 1.2 GB of 14.8 GB", or why not. The int overloads: the long ones are API 18. */
+    /**
+     * The heap and what our picture caches hold of it: on API 17 a bitmap's pixels live in the
+     * Dalvik heap, and every collector pause grows with what is live.
+     */
+    private static void memory(StringBuilder s) {
+        try {
+            Runtime r = Runtime.getRuntime();
+            // collected first, so "used" is what is live and not garbage waiting for a pause
+            System.gc();
+            System.runFinalization();
+            System.gc();
+            long used = r.totalMemory() - r.freeMemory();
+            s.append("heap     ").append(mb(used)).append(" live of ").append(mb(r.totalMemory()))
+                    .append(" (max ").append(mb(r.maxMemory())).append(")\n");
+            s.append("pictures big covers ").append(mb(BigCover.memBytes()))
+                    .append(", thumbnails ").append(mb(CoverCache.memBytes()))
+                    .append(", playlist covers ").append(mb(PlGrid.memBytes()))
+                    .append(", screensaver ").append(mb(Saver.memBytes())).append('\n');
+        } catch (Throwable t) {
+        }
+    }
+
+    private static String mb(long bytes) {
+        return String.format(Locale.US, "%.1f MB", bytes / 1048576f);
+    }
+
+    /** The pixels of the bitmaps among {@code values}, bare or in an {@code Object[]}, each once. */
+    static long bitmapBytes(java.util.Collection values) {
+        long n = 0;
+        java.util.IdentityHashMap seen = new java.util.IdentityHashMap();
+        Iterator it = values.iterator();
+        while (it.hasNext()) {
+            Object o = it.next();
+            if (o instanceof Object[]) {
+                Object[] a = (Object[]) o;
+                for (int i = 0; i < a.length; i++) if (a[i] instanceof android.graphics.Bitmap) o = a[i];
+            }
+            if (o instanceof android.graphics.Bitmap && seen.put(o, o) == null) {
+                android.graphics.Bitmap b = (android.graphics.Bitmap) o;
+                n += (long) b.getRowBytes() * b.getHeight();
+            }
+        }
+        return n;
+    }
+
+    /** The int overloads: the long ones are API 18. */
     private static String space(String path) {
         try {
             File d = new File(path);
@@ -465,12 +668,7 @@ public final class Diag {
         }
     }
 
-    /**
-     * Every preference of the mod, sorted, minus the bulk. {@code like:<path>} is one entry per
-     * favourited song and the cache stamps are machine-written numbers — hundreds of lines that say
-     * nothing about a defect and would push the logcat tail out of a readable file. They are
-     * counted instead.
-     */
+    /** Every mod preference, sorted; the per-song {@code like:} keys only counted. */
     private static void settings(Context c, StringBuilder s) {
         s.append("\n--- better-Y settings ---\n");
         try {
@@ -499,23 +697,14 @@ public final class Diag {
         }
     }
 
-    /**
-     * The Bluetooth rename keys carry the device's MAC ({@code bt_name:14:28:76:B6:79:0A}), and
-     * this file is meant to be attached to a public bug report. The last two octets are kept —
-     * enough to tell two paired devices apart in the log, not enough to identify the hardware.
-     */
+    /** The Bluetooth keys carry a MAC and the report goes public: only the last two octets stay. */
     private static String mask(String key) {
         if (key == null || !key.startsWith("bt_name:")) return key;
         int cut = key.length() - 5;                 // "XX:XX"
         return cut <= "bt_name:".length() ? key : "bt_name:…:" + key.substring(cut);
     }
 
-    /**
-     * What the library looks like from the app's side. The counts come off the cached song list
-     * ({@code Albums.allSongs}) rather than from queries of their own: it is one table read the
-     * screens have usually paid for already, and counting in Java keeps this out of the way of the
-     * splitting rules — what is counted here is what is actually in the table.
-     */
+    /** Counted off the cached song list: raw table contents, before any splitting. */
     private static void library(Context c, StringBuilder s) {
         s.append("\n--- library ---\n");
         try {
@@ -551,9 +740,7 @@ public final class Diag {
             s.append("(failed: ").append(t).append(")\n");
         }
         try {
-            // getCacheDir, not getExternalCacheDir: both cover caches live in the INTERNAL one
-            // (CoverCache.dir / BigCover.dir), and the first report written on the device duly
-            // said "covers 0 B" next to a library that had them all.
+            // getCacheDir: both cover caches live in the INTERNAL one
             File cache = c == null ? null : c.getCacheDir();
             s.append("cache    covers ").append(CacheSize.format(CacheSize.dirSize(
                     cache == null ? null : new File(cache, "ipp_covers"))));
@@ -580,24 +767,12 @@ public final class Diag {
         }
     }
 
-    // ------------------------------------------------------------------ what died, and how
-
-    /** How much of one saved file is carried over into the report. */
     private static final int FILE_CAP = 64 * 1024;
 
-    /** A crash older than this belongs to another session and is named, not quoted. */
+    /** An older tombstone is named, not quoted. */
     private static final long STALE_MS = 48L * 3600000L;
 
-    /**
-     * The two accounts of a crash, side by side: ours, which knows what the app was doing, and
-     * xCrash's, which knows how it died.
-     *
-     * xCrash is initialised by stock ({@code XCrash.init} in {@code Y1Application}) and was
-     * simply never read by anybody — it writes a tombstone per Java crash, per native crash and
-     * per ANR, with the stack, every thread, the memory map and the logcat it could reach. So the
-     * report does not need a crash catcher of its own for the stack; what it adds is
-     * {@link #spill}'s file, which carries the ring as it stood when the process died.
-     */
+    /** Both accounts of a crash: ours (what the app was doing) and stock xCrash's tombstone. */
     private static void crashes(StringBuilder s) {
         File f = newest(Panel.logs(), CRASH);
         s.append("\n--- last crash log the app saved before dying ---\n");
@@ -616,10 +791,6 @@ public final class Diag {
             long age = System.currentTimeMillis() - t.lastModified();
             s.append(t.getName()).append(", ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss",
                     Locale.US).format(new Date(t.lastModified()))).append('\n');
-            // Only a RECENT one is carried in. The first report written on the device pulled in a
-            // crash from three weeks earlier and spent 800 lines on it -- a tombstone is evidence
-            // when it is about the session being reported and archaeology otherwise. The name and
-            // the date stay either way, so an old one can still be asked for by hand.
             if (age > STALE_MS) {
                 s.append("(older than ").append(STALE_MS / 3600000L)
                         .append(" h, not included -- ask for the file itself if it matters)\n");
@@ -629,13 +800,12 @@ public final class Diag {
         }
     }
 
-    /** Where xCrash keeps its tombstones; its own answer, with the default as the fallback. */
+    /** xCrash's own answer, the default as the fallback. */
     private static File tombstones() {
         try {
             String d = xcrash.XCrash.getLogDir();
             if (d != null && d.length() > 0) return new File(d);
         } catch (Throwable t) {
-            // the library is stock's, and its answer is only a convenience
         }
         try {
             Context c = Y1Application.Companion.getAppContext();
@@ -645,11 +815,7 @@ public final class Diag {
         }
     }
 
-    /**
-     * The system's ANR traces. Every process is in there, ours among them, and the file is written
-     * by {@code system_server} the moment something stops answering — which is the one failure a
-     * log of our own can never describe, because the thread that would write it is the stuck one.
-     */
+    /** The system's ANR traces: a hang is the one failure our own log cannot describe. */
     private static void anr(StringBuilder s) {
         s.append("\n--- /data/anr/traces.txt (tail) ---\n");
         File f = new File("/data/anr/traces.txt");
@@ -662,7 +828,6 @@ public final class Diag {
         s.append(tail(f, FILE_CAP));
     }
 
-    /** The newest file in a directory, optionally by prefix, or null. */
     private static File newest(File dir, String prefix) {
         try {
             File[] fs = dir == null ? null : dir.listFiles();
@@ -679,7 +844,7 @@ public final class Diag {
         }
     }
 
-    /** The last {@code cap} bytes of a file — a tombstone or traces.txt can be megabytes. */
+    /** The last {@code cap} bytes of a file. */
     private static String tail(File f, int cap) {
         java.io.RandomAccessFile r = null;
         try {
@@ -698,19 +863,16 @@ public final class Diag {
             try {
                 if (r != null) r.close();
             } catch (Throwable t) {
-                // ignore
             }
         }
     }
-
-    // ------------------------------------------------------------------ toasts
 
     private static void toast(Context c, int res) {
         if (c == null) return;
         toast(c, c.getString(res));
     }
 
-    /** Centred, the way every toast of the mod's own is (see {@code Queue}). */
+    /** Centred. */
     private static void toast(Context c, String text) {
         try {
             if (c == null || text == null) return;
@@ -722,7 +884,6 @@ public final class Diag {
             }
             t.show();
         } catch (Throwable e) {
-            // ignore
         }
     }
 }

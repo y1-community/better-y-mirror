@@ -14,9 +14,6 @@
 
 [[tools]] Herramientas
 
-[reboot] Reiniciar
-Reinicia el dispositivo.
-
 [cache] Almacenar biblioteca en caché
 Guarda la biblioteca en la caché.
 
@@ -30,32 +27,80 @@ Guarda los ajustes, los me gusta, las listas de reproducción, los marcadores y 
 
 Se conservan las cinco copias más recientes. Después de Cargar, el reproductor se reinicia.
 
+[m3u_import] Importar listas M3U
+Muestra los archivos .m3u y .m3u8 de la carpeta /Playlists/ en la raíz de la tarjeta de memoria; cada uno que marques se convierte en una lista de reproducción, con las canciones en el orden del archivo. Una canción se busca por su ruta o, si la ruta no lleva a ninguna parte, por el nombre del archivo.
+
+Si ya existe una lista con ese nombre, puedes reemplazarla, añadir las canciones que faltan o crear una nueva. Un archivo exportado desde {app:favorites} vuelve a {app:favorites}.
+
+Al final, la pantalla muestra el nombre de archivo de cada canción que no se encontró en la biblioteca.
+
+Para exportar, mantén pulsado el botón superior sobre una lista y elige «Exportar a m3u».
+
+Para que la lista exportada se abra desde cualquier lugar del ordenador, hay que indicar la ruta de la biblioteca de música en tu ordenador (por ejemplo, C:\Music). Al importar, el reproductor propone una ruta. Puedes editarla directamente en el reproductor o más tarde en el archivo /better-Y/music_path.txt. La estructura de carpetas debe ser idéntica en el reproductor y en el ordenador.
+
 [log] Guardar registro de diagnóstico
 Guarda un informe de diagnóstico en la carpeta /better-Y/logs/ de la tarjeta de memoria para adjuntarlo a un informe de error.
 
+[menu_tip]
+* Cerrar
+* No volver a mostrar
+Puede mantener pulsado el botón superior en cada elemento del menú para saber más sobre cómo funciona.
+
+[themes_tip]
+* Cerrar
+* No volver a mostrar
+Puede guardar los ajustes actuales en el archivo better-Y.json, que aparecerá en la carpeta del tema seleccionado.
+
+Para ello, mantenga pulsado el botón superior sobre el tema deseado y seleccione "Guardar conf.".
+---
+Se guardan los siguientes ajustes:
+
+Reproduciendo ahora: estilo (excepto "inclinar la carátula").
+Menú: estilo, estilo y color del texto de la barra de estado.
+Salvapantallas: estilo (excepto "brillo").
+Tono de tecla: sonido.
+---
+Para añadir un fondo de salvapantallas (screensaver.*), un fondo para la pantalla USB (usb.*) o un icono de better-Y (better-Y.*), coloque imágenes con los nombres de archivo correspondientes en la carpeta del tema.
+
+Se admiten los formatos *.png, *.jpg y *.jpeg.
+---
+También puede usar su propio archivo de sonido para la rueda de desplazamiento.
+Para ello, coloque un archivo "key-tone.*" en la carpeta del tema. Después, vaya a Ajustes - Tono de tecla, seleccione Sonido - Tema y guarde la configuración del tema.
+
+Se admiten los formatos *.mp3, *.ogg y *.wav.
+
 [[player]] Reproduciendo ahora
+
+[np_style] Estilo
 
 [icon_tint] Color de los iconos
 * Claro
 * Oscuro
 * Color del tema
-Establece el color de los botones interactivos del reproductor.
 
 [text_tint] Color del texto
 * Claro
 * Oscuro
 * Color del tema
-Establece el color de las líneas de texto y de las marcas de tiempo del reproductor.
 
 [lyrics_tint] Color de la letra
 * Claro
 * Oscuro
 * Color del tema
-Establece el color de la letra de la canción en el reproductor.
+
+[box_tint] Color de los recuadros
+* Claro
+* Oscuro
+* Color del tema
+* Desactivado
 
 [cover_tilt] Inclinar la carátula
-@img cover_tilt_on.png {On}
-@img cover_tilt_off.png {Off}
+
+[np_blank]
+* Título
+* Artista
+* Álbum
+* Letra
 
 [top_hold] Mantener boton superior (Música)
 * Letras
@@ -82,6 +127,8 @@ pasa a ser
 Solo funciona en la línea del artista del reproductor.
 
 Los artistas ocultos se pueden mover al título activando «{row:feat_in_title}».
+
+Al activarlo se desactiva «{row:player_album_artist}».
 @img first_artist_only_off.png {Off}
 @img first_artist_only_on.png {On}
 
@@ -99,6 +146,40 @@ Solo funciona en la línea del artista del reproductor.
 @img first_artist_only_on.png {On} + {Off}
 @img feat_in_title_on.png {On} + {On}
 
+[player_album_artist] Mostrar artistas del álbum en vez de artistas
+Muestra en la línea del artista del reproductor el artista del álbum (Album Artist) en lugar de los artistas de la canción. Si el álbum no tiene Album Artist, se muestra el primer artista de la canción. Por ejemplo, en un álbum de «Tree»:
+
+«Tree, Shelf Nunny, Lena Kuhn — People»
+se convierte en
+«Tree — People»
+
+Solo funciona en la línea del artista del reproductor.
+
+Al activarlo se desactiva «{row:first_artist_only}».
+@img first_artist_only_off.png {Off}
+@img first_artist_only_on.png {On}
+
+[various_artist] Reemplazar «Various Artists» por un artista
+Si el Album Artist es «Various» o «Various Artists», se muestra en su lugar el primer artista de la canción. Por ejemplo, en un recopilatorio:
+
+«Various Artists — Lose Yourself»
+se convierte en
+«Eminem — Lose Yourself»
+
+[aa_feat_in_title] Mover los artistas invitados al título
+Mueve los artistas de la canción que la línea del artista no muestra al título de la canción, después de un «feat.». Por ejemplo, en un álbum de «Tree»:
+
+«Tree, Shelf Nunny, Lena Kuhn — People»
+con este ajuste desactivado se convierte en
+«Tree — People»
+
+con este ajuste activado se convierte en
+«Tree — People (feat. Shelf Nunny, Lena Kuhn)»
+
+No se añade nada si el título ya nombra a alguno de ellos o si la línea del artista muestra «Various» o «Various Artists».
+@img first_artist_only_on.png {Off}
+@img feat_in_title_on.png {On}
+
 [artist_album_scroll] Desplazar artistas/álbumes largos
 * Desactivado
 * Artistas
@@ -109,6 +190,8 @@ Activa el desplazamiento del texto largo en las líneas seleccionadas.
 Los títulos largos de las canciones se desplazan siempre, sea cual sea esta opción.
 
 [[menu]] Menú
+
+[menu_look] Estilo
 
 [alpha_scroll] Desplazamiento alfabético rápido
 Se activa tras un número de clics de la rueda y salta por la lista según la primera letra.
@@ -132,12 +215,106 @@ Al abrir la lista en la que está la canción en reproducción, la selección va
 [follow_idle if follow_playing] Retardo de regreso (segundos)
 Determina cuántos segundos después del último giro de la rueda la selección vuelve a la canción que se está reproduciendo.
 
-[fixed_menu_pad] Márgenes de menú corregidos
-Corrige los márgenes del menú principal y de los ajustes.
+[loop_scroll] Listas circulares
+Al llegar al final o al principio de una lista, la selección salta al extremo opuesto. Funciona en todas las listas, menús, galerías y ventanas de diálogo.
 
-Conviene desactivarlo con temas cuyos fondos están dibujados para los márgenes originales, como el incluido Melody Munchkin.
-@img fixed_menu_pad_off.png {Off}
-@img fixed_menu_pad_on.png {On}
+[animations] Activar animaciones
+
+[anim_nav] Navegación
+Las pantallas del menú se deslizan unas sobre otras, como en el iPod: hacia dentro, de derecha a izquierda; hacia atrás, de izquierda a derecha. Una lista junto a una imagen se desliza dentro de su mitad de la pantalla; una lista a pantalla completa entra por la derecha y empuja la mitad fuera.
+
+[anim_scroll] Desplazamiento
+
+[menu_style] Estilo
+* Predeterminado
+* Equilibrado
+* Simple
+
+[fixed_menu_pad] Márgenes
+* Predeterminado
+* Sin márgenes
+
+[preview_text] Color del texto en las vistas previas
+* Claro
+* Oscuro
+* Color del tema
+
+[main_menu] Menú principal
+
+[mm_now] Reproduciendo ahora
+
+[mm_music] Música
+
+[mm_coverflow] Cover Flow
+
+[mm_songs] Todas las canciones
+
+[mm_playlists] Listas de reproducción
+
+[mm_artists] Artistas
+
+[mm_albums] Álbumes
+
+[mm_genres] Géneros
+
+[mm_folders] Carpetas
+
+[mm_search] Buscar
+
+[mm_videos] Videos
+
+[mm_video_all] Todos los videos
+
+[mm_video_playlist] Listas de reproducción
+
+[mm_video_folders] Carpetas
+
+[mm_video_search] Buscar
+
+[mm_audiobooks] Audiolibros
+
+[mm_book_all] Todos los audiolibros
+
+[mm_book_artists] Artistas
+
+[mm_book_albums] Álbumes
+
+[mm_book_folders] Carpetas
+
+[mm_bookmarks] Marcadores
+
+[mm_ebook] E-libros
+
+[mm_photos] Fotos
+
+[mm_fm] Radio FM
+
+[mm_bluetooth] Bluetooth
+
+[album_artists] Artistas del álbum
+Un álbum sin etiqueta «Album Artist» toma el primer artista de la etiqueta «Artist» que más se repite en el álbum.
+
+[status_bar] Barra de estado
+
+[bar_text] Color del texto de la barra de estado
+* Claro
+* Oscuro
+* Color del tema
+Establece el color del título del menú y del porcentaje de batería.
+
+[bar_icons] Visibilidad de iconos
+* Título del menú
+* Reproducción
+* Auriculares
+* Bluetooth
+* Batería
+* Porcentaje de batería
+Elige qué iconos muestra la barra de estado.
+
+[bar_style] Estilo
+* Predeterminado
+* Centrado
+Centrado lleva los iconos al borde izquierdo y el título de la sección al centro; la batería se queda a la derecha.
 
 [[metadata]] Metadatos
 
@@ -148,8 +325,11 @@ Muestra los títulos de las canciones de los metadatos en lugar del nombre del a
 Muestra los títulos de los audiolibros de los metadatos en lugar del nombre del archivo.
 
 [album_year] Año de lanzamiento en los álbumes
-Muestra el año de lanzamiento del álbum en su nombre. Por ejemplo:
+Muestra el año de lanzamiento del álbum en su nombre:
 «The Eminem Show (2002)»
+
+Si un álbum contiene canciones de años distintos, se indican el año más antiguo y el más reciente separados por un guion:
+«Dirt (1992 - 1993)»
 
 [track_numbers] Números de pista de los metadatos en los álbumes
 Muestra los números de pista de los metadatos dentro de los álbumes.
@@ -216,9 +396,98 @@ Se pueden añadir canciones como en cualquier otra lista de reproducción, y los
 
 Al desactivar esta opción, la lista y los Me gusta que haya dado no se eliminan: simplemente se ocultan.
 
+[center_hold] Mantener el botón central para apagar
+Mantener pulsado el botón central durante 5 segundos apaga el dispositivo sin pedir confirmación.
+---
+Aparece un aviso 2 segundos antes del apagado. Soltar el botón mientras el aviso está visible cancela el apagado.
+
+Para bloquear la pantalla, pulse y suelte el botón central antes de que aparezca el aviso.
+
 [kb_lang2] Segundo idioma del teclado
 * Desactivado
 * Ruso
 Añade una segunda distribución al teclado en pantalla.
 
 Mantenga pulsado el botón superior para cambiar.
+
+[screensaver] Salvapantallas
+
+[ss_on] Activar salvapantallas
+Cuando se agota el tiempo de suspensión fijado en Ajustes, aparece un salvapantallas en lugar del bloqueo de pantalla.
+
+[ss_style] Estilo
+* Reloj, izquierda
+* Reloj, centro
+* Reloj, derecha
+* Reloj y fecha, izquierda
+* Reloj y fecha, centro
+* Reloj y fecha, derecha
+* Canción actual, izquierda
+* Canción actual, centro
+* Canción actual, derecha
+
+[ss_bright] Brillo
+
+[ss_off] Apagar la pantalla tras
+* 15 s
+* 30 s
+* 45 s
+* 1 min
+* 2 min
+* 3 min
+* 4 min
+* 5 min
+* 10 min
+* 15 min
+* Nunca
+Cuánto tiempo se mantiene el salvapantallas antes de que se apague la pantalla.
+
+[ss_charging] No apagar la pantalla al cargar
+
+[ss_background] Fondo
+* Claro
+* Oscuro
+* Fondo de pantalla
+
+[ss_tint] Tono del fondo
+* Desactivado
+* Claro
+* Oscuro
+* Color del tema
+
+[ss_clock_color] Color del reloj
+* Claro
+* Oscuro
+* Color del tema
+
+[ss_text_color] Color del texto
+* Claro
+* Oscuro
+* Color del tema
+
+[ss_tip]
+* Cerrar
+* No volver a mostrar
+Para cambiar de categoría, usa los botones izquierdo y derecho.
+
+Para elegir un valor, usa la rueda.
+
+Para guardar los cambios, sal del menú pulsando el botón superior.
+
+[[coverflow]] Cover Flow
+
+[flow_count] Álbumes en pantalla
+* 3
+* 5
+* 7
+
+[flow_group] Agrupar por artista
+
+[flow_year] Mostrar año de lanzamiento
+* Desactivado
+* Junto al artista
+* Junto al álbum
+
+[flow_start] Mostrar al iniciar
+* Última posición
+* Álbum en reproducción

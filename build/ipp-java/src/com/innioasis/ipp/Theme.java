@@ -1,7 +1,10 @@
 package com.innioasis.ipp;
 
+import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.graphics.drawable.BitmapDrawable;
@@ -17,38 +20,150 @@ import android.widget.TextView;
 import androidx.cardview.widget.CardView;
 import androidx.recyclerview.widget.RecyclerView;
 
+import com.blankj.utilcode.util.AppUtils;
+import com.innioasis.music.objects.Constant;
 import com.innioasis.y1.R;
+import com.innioasis.y1.activity.SplashActivity;
+import com.innioasis.y1.activity.theme.ThemeListActivity;
 import com.innioasis.y1.databinding.ItemSettingBinding;
 import com.innioasis.y1.Y1Application;
 import com.innioasis.y1.theme.ThemeManager;
 import com.innioasis.y1.theme.ThemeConfig;
 import com.innioasis.y1.theme.config.FileConfig;
 import com.innioasis.y1.theme.config.MenuConfig;
+import com.innioasis.y1.theme.util.BitmapCache;
+import com.innioasis.y1.utils.SDReceiver;
 
+import java.io.BufferedReader;
 import java.io.File;
-
+import java.io.FileReader;
+import java.lang.ref.WeakReference;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.WeakHashMap;
+
+import kotlin.Lazy;
 
 /**
- * Theme helpers.
- *
- * {@link #parseColor} replaces the body of {@code ThemeManager.getColor(String)}, which called
- * {@code Color.parseColor} on every invocation with no cache at all. That method sits under
- * {@code itemSetTextColor} / {@code optionSetTextColor} / {@code menuItemSetTextColor}, i.e. it
- * runs once per TextView per bind: a single wheel click can rebind ~8 visible rows up to 11 times
- * (stock's SpeedUtil acceleration), which is a few hundred string parses per click.
- *
- * The mapping "#ffffff" -> int is a pure function of the string, so the cache never needs
- * invalidating on a theme change; it is bounded by the handful of distinct colours a config.json
- * declares. Nulls are cached too (a malformed colour must not be re-parsed on every row).
- *
- * Raw (non-generic) types: the bundled d8 crashes dexing generic Signature attrs.
+ * Theme questions and theme-coloured bits of stock screens (tiles, Brightness, the theme gallery).
+ * {@link #parseColor} is the body of {@code ThemeManager.getColor}, cached: it runs per TextView
+ * per bind, hundreds of parses a wheel click. A pure function of the string, so never invalidated.
  */
 public final class Theme {
 
     private static final HashMap CACHE = new HashMap();
 
-    /** Stock semantics: null / blank -> null, unparseable -> null, otherwise the parsed colour. */
+    /**
+     * In place of stock's {@code isSdcard} in {@code ThemeManager.checkThemeValid}. That one asks
+     * StatFs of the mount point, which answers for the filesystem UNDER it while vold is still
+     * checking the card at boot (20 s on a large library) — the theme's config.json is missing
+     * then, and the theme was reset. Here the card counts only once it is in /proc/mounts.
+     */
+    /**
+     * The splash's wait in {@code ThemeManager.loadConfig}: a theme or a Key tone sound of the
+     * card's is waited for until the card is really mounted. The library ({@link Albums#bootReady})
+     * and, with neither of those, the card are waited for within the library's bound.
+     */
+    public static boolean bootReady() {
+        try {
+            String theme = ThemeManager.INSTANCE.getThemeName();
+            Context c = Y1Application.Companion.getAppContext();
+            boolean card = theme != null && theme.length() > 0
+                    || c != null && Prefs.getString(c, Tone.KEY_SOUND, "").length() > 0;
+            // asked first: it starts the read, which runs while the card is still being checked
+            boolean library = Albums.bootReady();
+            // the card too, within the library's bound: a scan at the mount starts while the splash
+            // is up, and the main menu, opened right after, shows its window (stock looks for 6 s)
+            boolean mounted = cardMounted() || !card && Albums.bootWaitOver();
+            return mounted && library;
+        } catch (Throwable t) {
+            return cardMounted();
+        }
+    }
+
+    public static boolean cardMounted() {
+        if (!SDReceiver.Companion.isSdcard()) return false;
+        BufferedReader in = null;
+        try {
+            in = new BufferedReader(new FileReader("/proc/mounts"));
+            String root = " " + Constant.ROOT_PATH + " ";
+            for (String l = in.readLine(); l != null; l = in.readLine()) {
+                if (l.indexOf(root) >= 0) return true;
+            }
+            return false;
+        } catch (Throwable t) {
+            return false;
+        } finally {
+            if (in != null) {
+                try {
+                    in.close();
+                } catch (Throwable t) {
+                }
+            }
+        }
+    }
+
+    private static final WeakHashMap SCREENS = new WeakHashMap();
+
+    /** From {@code BaseActivity.onCreate}. */
+    public static void created(Activity a) {
+        SCREENS.put(a, Boolean.TRUE);
+    }
+
+    /** Every screen still alive. */
+    static Object[] screens() {
+        return SCREENS.keySet().toArray();
+    }
+
+    /**
+     * In place of stock's {@code relaunchApp} once the theme is changed: the screens start over from
+     * the splash, which loads the new theme, while the process keeps its library and playback. What
+     * the process holds of the old theme is dropped first; failing that, the process is relaunched.
+     * Every screen is finished by hand: FLAG_ACTIVITY_CLEAR_TASK closes nothing here, and the
+     * singleTask main menu would come back as the old instance, in the old font and on the old row.
+     */
+    public static void relaunch() {
+        try {
+            forgetBitmaps();
+            MenuStyle.themeChanged();
+            Icons.themeChanged();
+            Saver.themeChanged();
+            Context c = Y1Application.Companion.getAppContext();
+            Intent i = new Intent(c, SplashActivity.class);
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            c.startActivity(i);
+            Object[] old = SCREENS.keySet().toArray();
+            SCREENS.clear();
+            for (int k = 0; k < old.length; k++) {
+                Activity a = (Activity) old[k];
+                if (a != null && !(a instanceof SplashActivity) && !a.isFinishing()) a.finish();
+            }
+            Diag.note("theme: " + ThemeManager.INSTANCE.getThemeName() + ", screens restarted");
+        } catch (Throwable t) {
+            Diag.note("Theme.relaunch: " + t);
+            AppUtils.relaunchApp(true);
+        }
+    }
+
+    /**
+     * Stock keys the theme's pictures by role ("itemBackground"), not by theme, and does not clear
+     * them at all on the way to no theme; its {@code clear()} parks them in weak references that
+     * still answer.
+     */
+    private static void forgetBitmaps() throws Exception {
+        Field f = ThemeManager.class.getDeclaredField("bitmapCache$delegate");
+        f.setAccessible(true);
+        BitmapCache cache = (BitmapCache) ((Lazy) f.get(null)).getValue();
+        cache.clear();
+        Field weak = BitmapCache.class.getDeclaredField("weakCache");
+        weak.setAccessible(true);
+        ((Map) weak.get(cache)).clear();
+    }
+
+    /** Stock semantics: null / blank / unparseable -> null. Nulls are cached too. */
     public static Integer parseColor(String s) {
         if (s == null) return null;
         if (CACHE.containsKey(s)) return (Integer) CACHE.get(s);
@@ -57,27 +172,17 @@ public final class Theme {
             try {
                 v = Integer.valueOf(Color.parseColor(s));
             } catch (Throwable t) {
-                v = null;                      // stock returned null for an unparseable colour
+                v = null;
             }
         }
         CACHE.put(s, v);
         return v;
     }
 
-    // ------------------------------------------------- does the theme paint the list rows itself?
-
     /**
-     * Is a list row's own background OPAQUE, or does the wallpaper show through it? Asked by
-     * anything washed over a row — the group captions of the better-Y menu and the queue, the
-     * queue's playing row — since one alpha reads as a band over a colour and as a stain over a
-     * photograph.
-     *
-     * **The config does not answer it:** every theme declares {@code itemBackground}, and what
-     * separates them is behind it — "Frutiger Aero" ships a png transparent across its whole
-     * canvas, "Junji Ito" writes a colour where a file name belongs (and
-     * {@code ThemeManager.setBackground} resolves a colour only in its asynchronous branch, never
-     * entered for a value that is not a file), so both come out as the stock, empty
-     * {@code item_no_selected}. So the row is painted and then looked at.
+     * Is a list row's background OPAQUE? Asked by anything washed over a row: one alpha is a band
+     * over a colour and a stain over a photograph. The config cannot answer (a fully transparent
+     * png, a colour where a file name belongs), so a probe row is painted and looked at.
      */
     public static boolean rowsPainted() {
         try {
@@ -93,26 +198,23 @@ public final class Theme {
             paintedFor = theme;
             return v;
         } catch (Throwable t) {
-            return false;                      // no theme is a theme with transparent rows
+            return false;
         }
     }
 
-    /**
-     * The scratch row the question is asked of. Kept rather than built per call: ThemeManager
-     * hands its asynchronous answer to the view that asked, so a bitmap still being decoded
-     * arrives on THIS one ({@link #landed}).
-     */
+    /** The unfocused row's background when it is opaque, else null. */
+    public static android.graphics.drawable.Drawable rowBackground() {
+        return rowsPainted() && probe != null ? probe.getBackground() : null;
+    }
+
+    /** Kept: a bitmap still decoding arrives later on THIS view ({@link #landed}). */
     private static View probe;
 
     private static Boolean painted;
     private static String paintedFor;
     private static Runnable watch;
 
-    /**
-     * The same question for the long-press menu's UNFOCUSED row ({@code menuItemBackground}):
-     * asked by the Photos icon strip, which is a menu too and goes see-through where the theme's
-     * menu rows do. Its own probe and memo; a late bitmap is reported to {@link #watchMenuRows}.
-     */
+    /** The same for the menu's unfocused row ({@code menuItemBackground}), for the Photos strip. */
     public static boolean menuRowsPainted() {
         try {
             String theme = ThemeManager.INSTANCE.getThemeName();
@@ -135,25 +237,24 @@ public final class Theme {
     private static String menuPaintedFor;
     private static Runnable menuWatch;
 
-    /** One watcher at a time; a stale one is harmless, it holds its screen weakly. */
+    /** One watcher at a time; a stale one holds its screen weakly. */
     public static void watchMenuRows(Runnable r) {
         menuWatch = r;
     }
 
-    /** One watcher at a time — the screen drawing bands, while it is on screen. */
+    /** One watcher at a time: the screen drawing bands. */
     public static void watchRows(Runnable r) {
         watch = r;
     }
 
-    /** ...and it takes its own back, never somebody else's: two such screens can be stacked. */
+    /** Only its own: two such screens can be stacked. */
     public static void unwatchRows(Runnable r) {
         if (watch == r) watch = null;
     }
 
     /**
-     * A theme bitmap has landed on a view (the asynchronous applier, through {@code Rows.reflat}).
-     * Only ours matters: until the picture is decoded the probe answers "not painted", which on a
-     * cold start is what the first screen to ask is told.
+     * A theme bitmap landed on a view ({@code Rows.reflat}). Only the probes matter: until then
+     * they answer "not painted", which is what the first screen on a cold start was told.
      */
     static void landed(View v) {
         if (v == null) return;
@@ -167,31 +268,14 @@ public final class Theme {
         } else {
             return;
         }
-        // Posted: the applier is in the middle of setting backgrounds, and the watcher rebuilds a
-        // screen. The probe has no window, so the Handler is explicit.
+        // Posted: the applier is mid-way through setting backgrounds. The probe has no window.
         if (r != null) new Handler(Looper.getMainLooper()).post(r);
     }
 
-    // ------------------------------------------------- does the theme draw the file icons itself?
-
     /**
-     * Has the theme brought its own picture for the folder / music icon of a Folders row
-     * ({@code fileTypeFolder} and {@code fileTypeMusic} in its {@code config.json})?
-     *
-     * Asked before those icons are tinted to the colour of the label beside them, the way every
-     * menu icon in the mod is: the tint is {@code SRC_IN}, which keeps the alpha and replaces
-     * every colour with one — right for the stock artwork, which is a white glyph on transparent,
-     * and destructive to a theme's own drawing, which may be of any number of colours. So a theme
-     * that ships one keeps it exactly as drawn.
-     *
-     * The config is read rather than probed, which is the opposite of {@link #rowsPainted} and for
-     * the opposite reason: there the answer is behind the name (a png can be transparent across
-     * its whole canvas), here the name IS the answer — {@code commonSetIcon} looks up nothing else
-     * before handing the picture over. The file is checked as well, because a name whose file is
-     * missing falls all the way back to the stock resource, which is exactly what wants tinting.
-     *
-     * Memoised against the theme's NAME, which is also what makes it cheap: a config.json is
-     * parsed once per theme rather than once per row.
+     * Has the theme shipped its own Folders folder / music icon? Then it is not tinted — SRC_IN
+     * would flatten a multicolour drawing. Read from the config (the name IS the answer here),
+     * checking the file exists; memoised per theme name.
      */
     public static boolean hasFileIcon(boolean folder) {
         try {
@@ -213,7 +297,7 @@ public final class Theme {
             }
             return folder ? folderIcon : musicIcon;
         } catch (Throwable t) {
-            return false;                      // unreadable config: the stock icons are what shows
+            return false;
         }
     }
 
@@ -226,10 +310,8 @@ public final class Theme {
     private static final int MENU_SEL_STOCK = 0xFF00F5FF;
 
     /**
-     * The menu highlight's colour ({@code menuItemSelectedBackground}): the theme's colour, stock's
-     * turquoise when there is none, 0 when it is a picture. Read from the config, not probed —
-     * {@code ThemeManager.setBackground} never applies a colour written there, so a probe would
-     * answer the stock drawable. Memoised against the theme's name.
+     * {@code menuItemSelectedBackground}: its colour, stock's when none, 0 for a picture. From the
+     * config: ThemeManager never applies a colour there, so a probe would answer stock.
      */
     public static int menuSelectedColor() {
         try {
@@ -264,7 +346,6 @@ public final class Theme {
         return name != null && name.length() != 0 && new File(dir, name).exists();
     }
 
-    /** A background that lets more than half the wallpaper through is not one. */
     private static final int HALF = 128;
 
     private static boolean opaque(Drawable d) {
@@ -293,57 +374,49 @@ public final class Theme {
         return a == null ? b == null : a.equals(b);
     }
 
-    // --------------------------------------------------------------- what a tile's frame is worth
-
-    /** The focus colour the layouts carry, and what a theme with nothing to say still gets. */
+    /** The layouts' focus colour, when the theme names none. */
     private static final int ACCENT = 0xFF3CFFDE;
 
-    /**
-     * The frame around the card under the cursor — the tiles of Photos and of the wallpaper
-     * gallery, both a {@code CardView} whose background IS the frame. The colour is read back off
-     * a probe: {@code itemSetTextColor} answers with the theme's and ignores the one it is passed.
-     */
+    /** The wallpaper gallery's focused tile, framed as in Photos; the CardView's background IS it. */
     public static void focusCard(CardView card) {
         if (card == null) return;
         try {
-            TextView probe = new TextView(card.getContext());
-            ThemeManager.INSTANCE.itemSetTextColor(probe, ACCENT, true);
-            card.setCardBackgroundColor(probe.getCurrentTextColor());
+            card.setCardBackgroundColor(Photos.focus(card.getContext()));
         } catch (Throwable t) {
-            // stock accent
         }
     }
 
-    /**
-     * A row of {@code item_setting.xml} — both labels in the theme's colours, accent on the
-     * cursor and white off it, which is what the stock Settings screen does to the same layout
-     * and the wallpaper menu did not. The flag is the one the row's background was just given.
-     */
+    /** The colour a focused row's text takes: the focus frame of the Photos and wallpaper tiles. */
+    static int focusColor(android.content.Context c) {
+        TextView probe = new TextView(c);
+        ThemeManager.INSTANCE.itemSetTextColor(probe, ACCENT, true);
+        return probe.getCurrentTextColor();
+    }
+
+    /** An {@code item_setting.xml} row as stock Settings paints it; {@code sel} as its background. */
     public static void settingRow(ItemSettingBinding vb, boolean sel) {
         if (vb == null) return;
         try {
             int c = sel ? ACCENT : 0xFFFFFFFF;
             ThemeManager.INSTANCE.itemSetTextColor(vb.title, c, sel);
             ThemeManager.INSTANCE.itemSetTextColor(vb.text, c, sel);
+            // the arrow only under the cursor, as in Settings; INVISIBLE keeps the label's width
+            if (!sel && vb.arrow.getVisibility() == android.view.View.VISIBLE) {
+                vb.arrow.setVisibility(android.view.View.INVISIBLE);
+            }
         } catch (Throwable t) {
-            // the layout's white stays
         }
     }
 
-    // ------------------------------------------------------------- the Brightness screen
-
-    /** How much of the bar's colour the empty track under it keeps — stock's {@code #65ffffff}. */
+    /** Stock's {@code #65ffffff} track. */
     private static final int TRACK_ALPHA = 0x65;
 
-    /**
-     * The brightness bar in the timeline's colour, its track (a bare sibling View) in the same
-     * colour at stock's alpha. With no colour the layout's own stay.
-     */
+    /** The Brightness bar in the timeline's colour, its track (a bare sibling View) too. */
     public static void brightnessBar(android.widget.ProgressBar pb) {
         try {
             if (pb == null) return;
             int c = Icons.progressColor();
-            if (c == 0) return;                                  // no colour to be had
+            if (c == 0) return;
             float r = 10f * pb.getResources().getDisplayMetrics().density;
             android.graphics.drawable.GradientDrawable bg = new android.graphics.drawable.GradientDrawable();
             bg.setCornerRadius(r);
@@ -368,15 +441,30 @@ public final class Theme {
                 }
             }
         } catch (Throwable t) {
-            // the layout's colours stay
         }
     }
 
-    // ------------------------------------------------------- the theme gallery (ThemeListActivity)
+    /** The gallery that has had its hint already: once per entry, not per reload of the list. */
+    private static WeakReference tipped;
 
     /**
-     * The full-screen preview has no backdrop, so the grid under it hides while it is open.
-     * INVISIBLE, not GONE: the grid keeps its layout and scroll position.
+     * The gallery's hint, from {@code ThemeListActivity$toPathFolder$2$1} right after its loading
+     * window closes. Not while a theme is still being copied: its own window is up, and the list
+     * is loaded again when it ends.
+     */
+    public static void tip(Activity a) {
+        try {
+            if (a == null || ThemeManager.INSTANCE.isRunCopyTheme()) return;
+            if (tipped != null && tipped.get() == a) return;
+            tipped = new WeakReference(a);
+            TipDialog.show(a, "themes_tip", "themes_hint_off");
+        } catch (Throwable t) {
+        }
+    }
+
+    /**
+     * The theme gallery's full-screen preview has no backdrop, so the grid hides under it —
+     * INVISIBLE, keeping its layout and scroll position.
      */
     public static void fullShown(View full) {
         try {
@@ -386,55 +474,45 @@ public final class Theme {
                 grid.setVisibility(full.getVisibility() == View.VISIBLE ? View.INVISIBLE : View.VISIBLE);
             }
         } catch (Throwable t) {
-            // the grid stays as it was
         }
     }
 
-    /** {@code item_theme.xml}'s own colours: the caption's white and the frame's blue. */
+    /** {@code ipp_pl_tile.xml}'s colours. */
     private static final int TILE_TEXT = 0xCCFFFFFF;
     private static final int TILE_FRAME = 0xFF36C6FF;
 
-    /**
-     * The caption under a cover, in the theme's list-row colour — the answer the tiles of Photos
-     * take ({@link Photos#name}); the layout's white when the theme names no colour.
-     */
+    /** As the Photos tiles' captions ({@link Photos#name}). */
     public static void tileName(TextView tv) {
         if (tv == null) return;
         try {
             ThemeManager.INSTANCE.itemSetTextColor(tv, TILE_TEXT, false);
         } catch (Throwable t) {
-            // the layout's white stays
         }
     }
 
-    /**
-     * The hint at the foot of the full-screen preview ("As Theme" and the glyph over it), in the
-     * colour of the captions beside it rather than the layout's own accent. The glyph is a flat
-     * shape, so it takes whatever colour the label ended up with, as menu icons do.
-     */
+    /** The preview's "As Theme" hint, in the captions' colour; the glyph follows the label. */
     public static void fullHint(ImageView icon, TextView label) {
         if (label == null) return;
         tileName(label);
         if (icon != null) Icons.menu(icon, label.getCurrentTextColor());
     }
 
-    /** The frame around the cover under the cursor: the timeline's colour, stock blue without one. */
     public static int tileFrame() {
         int c = Icons.progressColor();
         return c == 0 ? TILE_FRAME : c;
     }
 
-    /**
-     * How much wider the frame is than the cover. **Even on purpose:** the cover is centred in it,
-     * so an odd difference is split 3 and 2 and the frame comes out thicker on the top and left —
-     * which reads as the cover jumping a pixel when the cursor lands on it.
-     */
+    /** The card's side as tileFit last made it, 0 before the first tile: a cover is decoded to it. */
+    public static int tileCardSide() {
+        return fitSide > TILE_INSET ? fitSide - TILE_INSET : 0;
+    }
+
+    /** EVEN on purpose: an odd inset is split 3/2 and the cover seems to jump a pixel on focus. */
     private static final int TILE_INSET = 6;
 
     /**
-     * The caption's height as a multiple of its type size — fixed so the rows stand in the same
-     * place under every theme, since the theme supplies the font and a line is as tall as the font
-     * says. The COVER takes what is left. A face taller than this is cropped symmetrically.
+     * The caption's height per unit of type size, fixed so rows stand alike under every theme
+     * font; the cover takes the rest.
      */
     private static final float CAPTION = 1.35f;
 
@@ -442,9 +520,8 @@ public final class Theme {
     private static int fitSide;
 
     /**
-     * Sizes the cover so exactly two rows of "cover plus caption" fill the screen: the screen less
-     * the status bar (what {@code BaseActivity} gives the content), halved, less the caption and
-     * the row's margins. Code rather than a dimen — the 320x240 device has both smaller.
+     * Exactly two rows of cover plus caption per screen. In code, not a dimen: the 320x240 device
+     * differs.
      */
     public static void tileFit(View frame, View card, TextView caption) {
         if (frame == null || card == null || caption == null) return;
@@ -465,22 +542,18 @@ public final class Theme {
                 fitSide = avail / 2 - cap - gaps;
             }
             if (fitSide <= 0) return;
-            // With includeFontPadding on (the default) a line is as tall as the font's top..bottom
-            // rather than its ascent..descent — one more thing the theme's font would move.
+            // Font padding would be one more thing the theme's font moves.
             caption.setIncludeFontPadding(false);
             height(caption, cap);
             side(frame, fitSide);
             side(card, fitSide - TILE_INSET);
         } catch (Throwable t) {
-            // the layout's own 140/135 stays
         }
     }
 
     /**
-     * The odd pixel of an odd screen goes into the list's top padding, so the visible area is an
-     * exact number of rows and a step is exactly a row; both {@code Wheel.scrollTo} and the layout
-     * manager measure their edges from that padding. Must be called from {@code initView}, BEFORE
-     * the first layout: applied later it moves the edge but not the rows.
+     * An odd screen's odd pixel goes into the top padding, so a step is exactly a row. From
+     * {@code initView}, BEFORE the first layout — later it moves the edge but not the rows.
      */
     public static void tileGrid(RecyclerView rv) {
         if (rv == null) return;
@@ -489,11 +562,10 @@ public final class Theme {
                     - (int) rv.getResources().getDimension(R.dimen.status_bar_height);
             rv.setPadding(rv.getPaddingLeft(), avail % 2, rv.getPaddingRight(), rv.getPaddingBottom());
         } catch (Throwable t) {
-            // the list keeps the padding from its layout
         }
     }
 
-    /** A square of {@code px}, and nothing at all when the view already is one: a write is a layout. */
+    /** Nothing when already that size: a write is a layout. */
     private static void side(View v, int px) {
         ViewGroup.LayoutParams lp = v.getLayoutParams();
         if (lp == null || (lp.width == px && lp.height == px)) return;
@@ -510,14 +582,144 @@ public final class Theme {
     }
 
     /**
-     * Tags the cover as stock did, and empties a tile that has come back for a DIFFERENT theme —
-     * otherwise the previous theme's picture sat there until Glide answered. A tile rebound for the
-     * same theme keeps its picture, or the cursor passing over it would flicker in its own right.
+     * A tile rebound for a DIFFERENT theme shows that theme's cover read ahead, or nothing until
+     * Glide's arrives; the same theme keeps its picture. Rows gliding round the list's end rebind
+     * every tile they bring in, and an emptied one blinked. True = the cover came from memory and
+     * the gallery skips Glide.
      */
-    public static void tileCover(ImageView iv, String path) {
-        if (iv == null) return;
+    public static boolean tileCover(ImageView iv, String path) {
+        if (iv == null) return false;
+        Bitmap b = path == null ? null : (Bitmap) covers.get(path);
         Object was = iv.getTag();
-        if (was == null || !was.equals(path)) iv.setImageDrawable(null);
+        if (was == null || !was.equals(path)) {
+            iv.setImageDrawable(b == null ? null : new BitmapDrawable(iv.getResources(), b));
+        } else if (b != null && !(iv.getDrawable() instanceof BitmapDrawable
+                && ((BitmapDrawable) iv.getDrawable()).getBitmap() == b)) {
+            // the same theme with Glide's picture or none yet: from now on ours
+            iv.setImageDrawable(new BitmapDrawable(iv.getResources(), b));
+        }
         iv.setTag(path);
+        return b != null;
+    }
+
+    /**
+     * A theme that carries better-Y.json shows the logo in the corner where multi-select puts its
+     * box; in multi-select the box is stock's, as stock just set it. After stock's code for it.
+     */
+    public static void tileMark(ImageView mark, String path, boolean multi) {
+        if (mark == null || multi) return;
+        try {
+            Bitmap b = hasCfg(path) ? markBitmap(mark) : null;
+            if (b == null) {
+                mark.setVisibility(View.GONE);
+                return;
+            }
+            mark.setImageBitmap(b);
+            mark.setVisibility(View.VISIBLE);
+        } catch (Throwable t) {
+        }
+    }
+
+    private static Bitmap logo;
+    /** Theme path -> whether its folder has better-Y.json; cleared with each new gallery. */
+    private static final java.util.Hashtable cfgs = new java.util.Hashtable();
+
+    private static boolean hasCfg(String path) {
+        if (path == null || path.trim().length() == 0) return false;
+        Boolean b = (Boolean) cfgs.get(path);
+        if (b == null) {
+            b = Boolean.valueOf(new File(path, ThemeCfg.FILE).isFile());
+            cfgs.put(path, b);
+        }
+        return b.booleanValue();
+    }
+
+    /** Save config wrote the file: the gallery shows the logo at once. */
+    static void cfgSaved(Context c, String path) {
+        if (path != null) cfgs.put(path, Boolean.TRUE);
+        if (!(c instanceof Activity)) return;
+        View v = ((Activity) c).findViewById(R.id.recycler);
+        if (v instanceof RecyclerView && ((RecyclerView) v).getAdapter() != null) {
+            ((RecyclerView) v).getAdapter().notifyDataSetChanged();
+        }
+    }
+
+    /**
+     * {@code plus_logo} scaled once to the box the layout gives the mark: halved while it is twice
+     * the box or more, since a bilinear filter only averages 2:1 and a single 146 → 26 step aliases.
+     */
+    private static Bitmap markBitmap(ImageView v) {
+        if (logo != null) return logo;
+        ViewGroup.LayoutParams lp = v.getLayoutParams();
+        int side = lp != null && lp.width > 0 ? lp.width
+                : (int) (26 * v.getResources().getDisplayMetrics().density);
+        BitmapFactory.Options o = new BitmapFactory.Options();
+        o.inScaled = false;
+        Bitmap b = BitmapFactory.decodeResource(v.getResources(), R.drawable.plus_logo, o);
+        if (b == null) return null;
+        while (b.getWidth() >= side * 2) {
+            Bitmap h = Bitmap.createScaledBitmap(b, b.getWidth() / 2, b.getHeight() / 2, true);
+            if (h != b) b.recycle();
+            b = h;
+        }
+        Bitmap s = Bitmap.createScaledBitmap(b, side, side, true);
+        if (s != b) b.recycle();
+        logo = s;
+        return logo;
+    }
+
+    /** Theme path -> its cover at the tile's own size ({@link Thumbs#themeBox}). */
+    private static final java.util.Hashtable covers = new java.util.Hashtable();
+    private static WeakReference coversFor = new WeakReference(null);
+
+    /**
+     * Once per gallery, from the first frame of the grid that has themes in it (it is filled
+     * from the card, later the first time): every theme's cover read off the main thread.
+     */
+    public static void tilesAhead(RecyclerView rv) {
+        try {
+            RecyclerView.Adapter a = rv == null ? null : rv.getAdapter();
+            if (!(a instanceof com.chad.library.adapter.base.BaseQuickAdapter) || coversFor.get() == a) return;
+            List data = ((com.chad.library.adapter.base.BaseQuickAdapter) a).getData();
+            if (data == null || data.isEmpty()) return;        // not filled yet: the next call
+            coversFor = new WeakReference(a);
+            cfgs.clear();
+            ArrayList todo = new ArrayList();
+            for (int i = 0; data != null && i < data.size(); i++) {
+                Object o = data.get(i);
+                if (!(o instanceof ThemeListActivity.Item)) continue;
+                ThemeListActivity.Item it = (ThemeListActivity.Item) o;
+                if (it.getPicturePath().trim().length() == 0 || covers.get(it.getPath()) != null) continue;
+                todo.add(new String[] {it.getPath(), it.getPicturePath()});
+            }
+            if (!todo.isEmpty()) new Thread(new Covers(todo, Thumbs.themeBox(rv.getContext())), "ipp-theme-covers").start();
+        } catch (Throwable t) {
+        }
+    }
+
+    /** From the gallery's {@code onDestroy}: neither its covers nor Glide's pictures outlive it. */
+    public static void galleryLeft(Activity a) {
+        covers.clear();
+        coversFor = new WeakReference(null);
+        Thumbs.left(a);
+    }
+
+    static final class Covers implements Runnable {
+        private final List todo;
+        private final int[] box;
+        Covers(List todo, int[] box) {
+            this.todo = todo;
+            this.box = box;
+        }
+        public void run() {
+            for (int i = 0; i < todo.size(); i++) {
+                String[] p = (String[]) todo.get(i);
+                try {
+                    Bitmap c = Thumbs.read(p[1], box[0], box[1]);
+                    if (c != null) covers.put(p[0], c);
+                } catch (Throwable t) {
+                }
+            }
+        }
     }
 }

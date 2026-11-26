@@ -14,9 +14,6 @@
 
 [[tools]] Werkzeuge
 
-[reboot] Neustart
-Startet das Gerät neu.
-
 [cache] Bibliothek zwischenspeichern
 Legt die Mediathek im Cache ab.
 
@@ -30,32 +27,80 @@ Speichert Einstellungen, Likes, Wiedergabelisten, Lesezeichen und Lesefortschrit
 
 Die fünf neuesten Backups werden behalten. Nach dem Laden startet der Player neu.
 
+[m3u_import] M3U-Wiedergabelisten importieren
+Zeigt die .m3u- und .m3u8-Dateien im Ordner /Playlists/ im Stammverzeichnis der Speicherkarte; jede markierte wird zu einer Wiedergabeliste, die Titel in der Reihenfolge der Datei. Ein Titel wird über seinen Pfad gefunden, oder über den Dateinamen, wenn der Pfad ins Leere führt.
+
+Gibt es bereits eine Wiedergabeliste mit diesem Namen, können Sie sie ersetzen, die fehlenden Titel hinzufügen oder eine neue erstellen. Eine aus {app:favorites} exportierte Datei kehrt in {app:favorites} zurück.
+
+Am Ende zeigt der Bildschirm die Dateinamen aller Titel, die in der Bibliothek nicht gefunden wurden.
+
+Zum Exportieren halten Sie die obere Taste auf einer Wiedergabeliste gedrückt und wählen „Als m3u export.“.
+
+Damit sich die exportierte Wiedergabeliste am PC von überall aus öffnen lässt, muss der Pfad zur Musikbibliothek auf Ihrem Computer angegeben werden (zum Beispiel C:\Music). Beim Import schlägt der Player einen Pfad vor. Sie können ihn direkt am Player bearbeiten oder später in der Datei /better-Y/music_path.txt. Die Ordnerstruktur muss auf dem Player und am PC identisch sein.
+
 [log] Diagnoseprotokoll speichern
 Speichert einen Diagnosebericht im Ordner /better-Y/logs/ auf der Speicherkarte, um ihn einem Fehlerbericht beizulegen.
 
+[menu_tip]
+* Schließen
+* Nicht mehr anzeigen
+Sie können auf jedem Menüpunkt die obere Taste gedrückt halten, um mehr darüber zu erfahren, wie er funktioniert.
+
+[themes_tip]
+* Schließen
+* Nicht mehr anzeigen
+Sie können die aktuellen Einstellungen in der Datei better-Y.json speichern, die im Ordner des ausgewählten Designs erscheint.
+
+Halten Sie dazu auf dem gewünschten Design die obere Taste gedrückt und wählen Sie "Speichern".
+---
+Folgende Einstellungen werden gespeichert:
+
+Gerade läuft: Stil (außer "Cover neigen").
+Menü: Stil, Stil und Textfarbe der Statusleiste.
+Bildschirmschoner: Stil (außer "Helligkeit").
+Tastenklang: Klang.
+---
+Um einen Hintergrund für den Bildschirmschoner (screensaver.*), einen Hintergrund für den USB-Bildschirm (usb.*) oder ein better-Y-Symbol (better-Y.*) hinzuzufügen, legen Sie Bilder mit den entsprechenden Dateinamen in den Ordner des Designs.
+
+Unterstützte Formate sind *.png, *.jpg und *.jpeg.
+---
+Sie können auch eine eigene Tondatei für das Scrollrad verwenden.
+Legen Sie dazu eine Datei "key-tone.*" in den Ordner des Designs. Öffnen Sie anschließend Einstellungen - Tastenklang, wählen Sie Klang - Design und speichern Sie die Konfiguration des Designs.
+
+Unterstützte Formate sind *.mp3, *.ogg und *.wav.
+
 [[player]] Gerade läuft
+
+[np_style] Stil
 
 [icon_tint] Symbolfarbe
 * Hell
 * Dunkel
 * Themenfarbe
-Legt die Farbe der interaktiven Schaltflächen im Player fest.
 
 [text_tint] Textfarbe
 * Hell
 * Dunkel
 * Themenfarbe
-Legt die Farbe der Textzeilen und der Zeitangaben im Player fest.
 
 [lyrics_tint] Songtextfarbe
 * Hell
 * Dunkel
 * Themenfarbe
-Legt die Farbe des Songtexts im Player fest.
+
+[box_tint] Farbe der Textfelder
+* Hell
+* Dunkel
+* Themenfarbe
+* Aus
 
 [cover_tilt] Cover neigen
-@img cover_tilt_on.png {On}
-@img cover_tilt_off.png {Off}
+
+[np_blank]
+* Titel
+* Interpret
+* Album
+* Songtext
 
 [top_hold] Obere Taste gedrueckt halten (Musik)
 * Songtext
@@ -82,6 +127,8 @@ wird zu
 Gilt nur für die Künstlerzeile im Player.
 
 Ausgeblendete Künstler lassen sich mit „{row:feat_in_title}“ in den Titel verschieben.
+
+Beim Einschalten wird „{row:player_album_artist}“ ausgeschaltet.
 @img first_artist_only_off.png {Off}
 @img first_artist_only_on.png {On}
 
@@ -99,6 +146,40 @@ Gilt nur für die Künstlerzeile im Player.
 @img first_artist_only_on.png {On} + {Off}
 @img feat_in_title_on.png {On} + {On}
 
+[player_album_artist] Albumkünstler statt Künstler anzeigen
+Zeigt in der Künstlerzeile des Players den Albumkünstler (Album Artist) statt der Künstler des Songs. Hat ein Album keinen Album Artist, wird der erste Künstler des Songs gezeigt. Zum Beispiel auf einem Album von „Tree“:
+
+„Tree, Shelf Nunny, Lena Kuhn — People“
+wird zu
+„Tree — People“
+
+Gilt nur für die Künstlerzeile im Player.
+
+Beim Einschalten wird „{row:first_artist_only}“ ausgeschaltet.
+@img first_artist_only_off.png {Off}
+@img first_artist_only_on.png {On}
+
+[various_artist] „Various Artists“ durch einen Künstler ersetzen
+Ist der Album Artist „Various“ oder „Various Artists“, wird stattdessen der erste Künstler des Songs gezeigt. Zum Beispiel auf einer Compilation:
+
+„Various Artists — Lose Yourself“
+wird zu
+„Eminem — Lose Yourself“
+
+[aa_feat_in_title] Gastkünstler in den Titel verschieben
+Verschiebt die Künstler des Songs, die die Künstlerzeile nicht zeigt, hinter einem „feat.“ in den Songtitel. Zum Beispiel auf einem Album von „Tree“:
+
+„Tree, Shelf Nunny, Lena Kuhn — People“
+wird mit dieser Einstellung Aus zu
+„Tree — People“
+
+mit dieser Einstellung An zu
+„Tree — People (feat. Shelf Nunny, Lena Kuhn)“
+
+Nichts wird angehängt, wenn der Titel einen von ihnen schon nennt oder die Künstlerzeile „Various“ oder „Various Artists“ zeigt.
+@img first_artist_only_on.png {Off}
+@img feat_in_title_on.png {On}
+
 [artist_album_scroll] Langen Künstler-/Albumtext scrollen
 * Aus
 * Künstler
@@ -109,6 +190,8 @@ Aktiviert das Scrollen langer Texte in den gewählten Zeilen.
 Lange Songtitel scrollen immer, unabhängig von dieser Einstellung.
 
 [[menu]] Menü
+
+[menu_look] Stil
 
 [alpha_scroll] Alphabetisches Schnellscrollen
 Setzt nach einigen Radklicks ein und springt anhand des ersten Buchstabens durch die Liste.
@@ -132,12 +215,106 @@ Beim Öffnen der Liste, in der der gerade laufende Titel steht, springt die Ausw
 [follow_idle if follow_playing] Verzögerung der Rückkehr (Sekunden)
 Legt fest, wie viele Sekunden nach dem letzten Drehen des Rades die Auswahl zum gerade laufenden Titel zurückkehrt.
 
-[fixed_menu_pad] Korrigierte Menüränder
-Korrigiert die Ränder des Hauptmenüs und der Einstellungen.
+[loop_scroll] Endlose Listen
+Am Ende oder Anfang einer Liste springt die Auswahl auf die gegenüberliegende Seite. Gilt für alle Listen, Menüs, Galerien und Dialogfenster.
 
-Bei Designs, deren Hintergründe für die Original-Ränder gezeichnet sind, besser ausschalten — etwa beim mitgelieferten Melody Munchkin.
-@img fixed_menu_pad_off.png {Off}
-@img fixed_menu_pad_on.png {On}
+[animations] Animationen aktivieren
+
+[anim_nav] Navigation
+Menübildschirme gleiten ineinander über, wie beim iPod: tiefer hinein von rechts nach links, zurück von links nach rechts. Eine Liste neben einem Bild gleitet in ihrer Bildschirmhälfte; eine Liste über den ganzen Bildschirm kommt von rechts und schiebt die Hälfte hinaus.
+
+[anim_scroll] Scrollen
+
+[menu_style] Stil
+* Standard
+* Gleichmäßig
+* Einfach
+
+[fixed_menu_pad] Ränder
+* Standard
+* Ohne Ränder
+
+[preview_text] Textfarbe der Vorschau
+* Hell
+* Dunkel
+* Themenfarbe
+
+[main_menu] Hauptmenü
+
+[mm_now] Jetzt läuft
+
+[mm_music] Musik
+
+[mm_coverflow] Cover Flow
+
+[mm_songs] Alle songs
+
+[mm_playlists] Wiedergabelisten
+
+[mm_artists] Künstler
+
+[mm_albums] Alben
+
+[mm_genres] Genres
+
+[mm_folders] Ordner
+
+[mm_search] Suche
+
+[mm_videos] Video
+
+[mm_video_all] Alle Videos
+
+[mm_video_playlist] Listen
+
+[mm_video_folders] Ordner
+
+[mm_video_search] Suche
+
+[mm_audiobooks] Hörbücher
+
+[mm_book_all] Alle Hörbücher
+
+[mm_book_artists] Künstler
+
+[mm_book_albums] Alben
+
+[mm_book_folders] Ordner
+
+[mm_bookmarks] Lesezeichen
+
+[mm_ebook] E-Books
+
+[mm_photos] Fotos
+
+[mm_fm] UKW-Radio
+
+[mm_bluetooth] Bluetooth
+
+[album_artists] Albumkünstler
+Ein Album ohne „Album Artist“-Tag nimmt den ersten Künstler aus dem „Artist“-Tag, der auf dem Album am häufigsten vorkommt.
+
+[status_bar] Statusleiste
+
+[bar_text] Textfarbe der Statusleiste
+* Hell
+* Dunkel
+* Themenfarbe
+Legt die Farbe des Menütitels und der Akkuanzeige in Prozent fest.
+
+[bar_icons] Sichtbarkeit der Symbole
+* Menütitel
+* Wiedergabe
+* Kopfhörer
+* Bluetooth
+* Akku
+* Akkuprozent
+Legt fest, welche Symbole die Statusleiste zeigt.
+
+[bar_style] Stil
+* Standard
+* Zentriert
+Zentriert rückt die Symbole an den linken Rand und den Titel des Bereichs in die Mitte; der Akku bleibt rechts.
 
 [[metadata]] Metadaten
 
@@ -148,8 +325,11 @@ Zeigt Songtitel aus den Metadaten statt des Dateinamens.
 Zeigt Hörbuchtitel aus den Metadaten statt des Dateinamens.
 
 [album_year] Erscheinungsjahr in Albumnamen
-Zeigt das Erscheinungsjahr des Albums in dessen Namen. Zum Beispiel:
+Zeigt das Erscheinungsjahr des Albums in dessen Namen:
 „The Eminem Show (2002)“
+
+Enthält ein Album Songs aus verschiedenen Jahren, werden das früheste und das späteste Jahr mit einem Bindestrich angegeben:
+„Dirt (1992 - 1993)“
 
 [track_numbers] Titelnummern aus Metadaten in Alben
 Zeigt Titelnummern aus den Metadaten innerhalb von Alben.
@@ -216,9 +396,98 @@ Titel lassen sich dort wie in jeder anderen Wiedergabeliste hinzufügen, die Lik
 
 Wird die Einstellung ausgeschaltet, werden die Wiedergabeliste und die vergebenen Likes nicht gelöscht, sondern nur ausgeblendet.
 
+[center_hold] Zum Ausschalten Mitteltaste gedrückt halten
+Wird die Mitteltaste 5 Sekunden lang gedrückt gehalten, schaltet sich das Gerät ohne Rückfrage aus.
+---
+2 Sekunden vor dem Ausschalten erscheint ein Hinweis. Wird die Taste losgelassen, solange der Hinweis sichtbar ist, wird das Ausschalten abgebrochen.
+
+Um den Bildschirm zu sperren, die Mitteltaste drücken und loslassen, bevor der Hinweis erscheint.
+
 [kb_lang2] Zweite Tastatursprache
 * Aus
 * Russisch
 Fügt der Bildschirmtastatur eine zweite Belegung hinzu.
 
 Zum Umschalten die obere Taste halten.
+
+[screensaver] Bildschirmschoner
+
+[ss_on] Bildschirmschoner aktivieren
+Wenn die in den Einstellungen festgelegte Ruhezeit abläuft, erscheint statt der Bildschirmsperre ein Bildschirmschoner.
+
+[ss_style] Stil
+* Uhr, links
+* Uhr, Mitte
+* Uhr, rechts
+* Uhr und Datum, links
+* Uhr und Datum, Mitte
+* Uhr und Datum, rechts
+* Aktueller Titel, links
+* Aktueller Titel, Mitte
+* Aktueller Titel, rechts
+
+[ss_bright] Helligkeit
+
+[ss_off] Bildschirm ausschalten nach
+* 15 s
+* 30 s
+* 45 s
+* 1 Min.
+* 2 Min.
+* 3 Min.
+* 4 Min.
+* 5 Min.
+* 10 Min.
+* 15 Min.
+* Nie
+Wie lange der Bildschirmschoner bleibt, bevor sich der Bildschirm ausschaltet.
+
+[ss_charging] Bildschirm beim Laden nicht ausschalten
+
+[ss_background] Hintergrund
+* Hell
+* Dunkel
+* Hintergrundbild
+
+[ss_tint] Hintergrundtönung
+* Aus
+* Hell
+* Dunkel
+* Themenfarbe
+
+[ss_clock_color] Uhrfarbe
+* Hell
+* Dunkel
+* Themenfarbe
+
+[ss_text_color] Textfarbe
+* Hell
+* Dunkel
+* Themenfarbe
+
+[ss_tip]
+* Schließen
+* Nicht mehr anzeigen
+Mit der linken und rechten Taste wechseln Sie die Kategorie.
+
+Mit dem Rad wählen Sie einen Wert.
+
+Um die Änderungen zu speichern, verlassen Sie das Menü mit der oberen Taste.
+
+[[coverflow]] Cover Flow
+
+[flow_count] Alben auf dem Bildschirm
+* 3
+* 5
+* 7
+
+[flow_group] Nach Künstler gruppieren
+
+[flow_year] Erscheinungsjahr anzeigen
+* Aus
+* Neben dem Künstler
+* Neben dem Album
+
+[flow_start] Beim Start anzeigen
+* Letzte Position
+* Aktuell gespieltes Album

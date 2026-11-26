@@ -17,57 +17,49 @@ import kotlin.Unit;
 import kotlin.jvm.functions.Function0;
 
 /**
- * What "Cache library" fills and "Clear cache" wipes, as a handful of categories the user ticks in
- * {@link PickDialog}.
- *
- * Why categories at all
- * All-or-nothing buttons are not enough. The expensive half of each is the covers: filling them is
- * one file open per song, and throwing them away means every list and every player screen reads its
- * artwork again. Re-reading the track numbers after a tag edit, or dropping only the pictures, are
- * both perfectly ordinary things to want.
- *
- * The system category is not ours
- * Stock's "Clear cache" asks the package manager to empty the cache directory of every installed
- * package, and ours is one of them: that single call is what deletes {@code ipp_covers/},
- * {@code ipp_big/} and the {@code ipp_*.txt} files, whatever the user ticked. So when the ipp
- * categories are not all selected, {@link #packages} drops our own package from that loop and
- * empties the rest of our cache directory ({@code Glide}'s theme covers and anything else that is
- * not ours) by hand — otherwise unticking "Covers" would still lose the covers.
+ * The categories "Cache library" fills and "Clear cache" wipes, ticked in {@link PickDialog}.
+ * Stock's clear empties every package's cache dir, ours included, so while an ipp category is
+ * kept {@link #packages} takes our package out of that loop and the rest of our cache is emptied
+ * by hand.
  */
 public final class Pick {
 
     private Pick() { }
 
-    /** The 50px list thumbnails and the 300px Now-Playing covers, memory and disk. */
+    /** List thumbnails and Now-Playing covers, memory and disk. */
     public static final int COVERS = 1;
-    /** Everything read out of a tag: years, album artists, track and disc numbers, genres. */
+    /** Everything read out of a tag. */
     public static final int TAGS = 2;
-    /** Stock's own clear: the cache directory of every installed package. Clearing only. */
+    /** Stock's clear of every package's cache. Clearing only. */
     public static final int SYSTEM = 4;
+    /** Cover Flow's covers at slide size. Made from the covers, so they go with them. */
+    public static final int FLOW = 8;
+    /** What the three above hold for songs no longer in the library ({@link Stale}). Clearing only. */
+    public static final int STALE = 16;
 
-    /** What a "Cache library" pass can fill. */
-    public static final int CACHE_ALL = COVERS | TAGS;
+    public static final int CACHE_ALL = COVERS | TAGS | FLOW;
 
     public static int label(int cat) {
         if (cat == COVERS) return R.string.ipp_pick_covers;
         if (cat == TAGS) return R.string.ipp_pick_tags;
+        if (cat == FLOW) return R.string.ipp_pick_flow;
+        if (cat == STALE) return R.string.ipp_pick_stale;
         return R.string.ipp_pick_system;
     }
 
-    // ---------------------------------------------------------------- "Clear cache"
-
-    /**
-     * Open the picker for Settings → "Clear cache". Called from stock
-     * {@code SettingActivity.clickClearCache}, whose own body has moved to {@code ippClearCache}.
-     */
-    public static void askClear(SettingActivity a) {
-        if (a == null) return;
-        int[] cats = new int[]{COVERS, TAGS, SYSTEM};
-        new PickDialog(a, a.getString(R.string.add_req_clear_cache),
-                a.getString(R.string.ipp_pick_clear), cats, true, new DoClear(a)).show();
+    /** Its weight is part of the others', so the total does not count it twice. */
+    static boolean inTotal(int cat) {
+        return cat != STALE;
     }
 
-    /** Named (d8 here crashes on anonymous classes). */
+    /** From {@code SettingActivity.clickClearCache}; stock's body is {@code ippClearCache}. */
+    public static void askClear(SettingActivity a) {
+        if (a == null) return;
+        int[] cats = new int[]{STALE, COVERS, FLOW, TAGS, SYSTEM};
+        new PickDialog(a, a.getString(R.string.add_req_clear_cache),
+                a.getString(R.string.ipp_pick_clear), cats, true, 0, new DoClear(a)).show();
+    }
+
     static final class DoClear extends PickDialog.Go {
         private final SettingActivity a;
 
@@ -77,8 +69,7 @@ public final class Pick {
         public void go(int mask) {
             if (mask == 0) return;
             if ((mask & SYSTEM) != 0) {
-                // The stock path: its LoadingDialog, its per-package observer, its dismissal. Our
-                // own categories are wiped from inside it, so both halves report as one action.
+                // Stock's path, with ours wiped from inside it: one dialog for both.
                 a.ippClearCache(mask);
                 return;
             }
@@ -86,46 +77,125 @@ public final class Pick {
         }
     }
 
-    /** ipp categories only: stock's "Clearing cache…" dialog over a background delete. */
+    /** Ours only: stock's "Clearing cache…" dialog, counting, over a background delete. */
     private static void clearWithDialog(SettingActivity a, int mask) {
         LoadingDialog d = null;
         try {
             d = new LoadingDialog(a, a.getString(R.string.add_req_clearing_cache), "",
                     R.style.Dialog_Common, new Noop());
+            Loading.counter(d);
             d.show();
         } catch (Throwable t) {
             d = null;
         }
-        new Thread(new ClearTask(a, mask, d)).start();
+        begin(a, d);
+        expect(0);
+        clearAsync(mask);
     }
 
-    /** Named (d8 here crashes on anonymous classes). */
-    static final class ClearTask implements Runnable {
-        private final SettingActivity a;
-        private final int mask;
-        private final LoadingDialog dialog;
+    // Stock counts its per-package callbacks with a bare clearFlag++ on binder threads: two at
+    // once lose one, the count never reaches the total and its dialog never closes. So the
+    // callbacks are counted here, and the dialog closes when the packages AND our half are done.
 
-        ClearTask(SettingActivity a, int mask, LoadingDialog dialog) {
-            this.a = a;
-            this.mask = mask;
-            this.dialog = dialog;
+    private static final Object RUN = new Object();
+    private static SettingActivity runHost;
+    private static LoadingDialog runDialog;
+    private static int runPackages, runRemoved, runSteps, runShown;
+    private static boolean runOwnDone, runFinished;
+    /** {@link #clearLocked}'s parts plus the rest of our cache dir. */
+    private static final int STEPS = 5;
+    /** The packages' share of the percent: they are done in a second or two. */
+    private static final int PACKAGES_PCT = 20;
+
+    /** From {@code ippClearCache} once its dialog is up, before anything is cleared. */
+    public static void begin(SettingActivity a, LoadingDialog d) {
+        synchronized (RUN) {
+            runHost = a;
+            runDialog = d;
+            runPackages = -1;           // not known until stock has listed them
+            runRemoved = 0;
+            runSteps = 0;
+            runShown = 0;
+            runOwnDone = false;
+            runFinished = false;
+        }
+        if (a != null) Loading.show(d, Loading.percent(a.getString(R.string.add_req_clearing_cache), 0));
+    }
+
+    /** The number of packages stock is about to clear. */
+    public static void expect(int packages) {
+        synchronized (RUN) {
+            runPackages = packages;
+        }
+        advance();
+    }
+
+    /** One package's callback, from any binder thread. */
+    public static void removedOne(SettingActivity a) {
+        synchronized (RUN) {
+            runRemoved++;
+        }
+        advance();
+    }
+
+    private static void step() {
+        synchronized (RUN) {
+            if (runHost == null) return;
+            runSteps++;
+        }
+        advance();
+    }
+
+    private static void ownDone() {
+        synchronized (RUN) {
+            runOwnDone = true;
+        }
+        advance();
+    }
+
+    private static void advance() {
+        SettingActivity a;
+        LoadingDialog d;
+        int p;
+        boolean finish;
+        synchronized (RUN) {
+            a = runHost;
+            d = runDialog;
+            if (a == null || runFinished) return;
+            boolean packagesDone = runPackages >= 0 && runRemoved >= runPackages;
+            int pk = runPackages < 0 ? 0 : packagesDone ? PACKAGES_PCT : runRemoved * PACKAGES_PCT / runPackages;
+            int own = runOwnDone ? 100 - PACKAGES_PCT : Math.min(runSteps, STEPS) * (100 - PACKAGES_PCT) / STEPS;
+            p = pk + own;
+            finish = packagesDone && runOwnDone;
+            if (finish) {
+                runFinished = true;
+                runHost = null;
+                runDialog = null;
+            } else if (p <= runShown) {
+                return;
+            }
+            runShown = p;
+        }
+        try {
+            if (finish) a.runOnUiThread(new Done(a, d));
+            else a.runOnUiThread(new Tick(d, Loading.percent(a.getString(R.string.add_req_clearing_cache), p)));
+        } catch (Throwable t) {
+        }
+    }
+
+    static final class Tick implements Runnable {
+        private final LoadingDialog d;
+        private final String text;
+
+        Tick(LoadingDialog d, String text) {
+            this.d = d;
+            this.text = text;
         }
 
         public void run() {
-            try {
-                clear(mask);
-            } catch (Throwable t) {
-                // a half-deleted cache is still a cache
-            }
-            try {
-                a.runOnUiThread(new Done(a, dialog));
-            } catch (Throwable t) {
-                // the screen is gone; the caches are cleared either way
-            }
+            Loading.show(d, text);
         }
     }
-
-    /** Back on the main thread: close the dialog and re-measure the number under the row. */
     static final class Done implements Runnable {
         private final SettingActivity a;
         private final LoadingDialog dialog;
@@ -139,11 +209,17 @@ public final class Pick {
             if (dialog != null) {
                 try { dialog.dismiss(); } catch (Throwable t) { }
             }
+            // the same word stock's own clear ends with
+            try {
+                android.widget.Toast.makeText(a, a.getString(R.string.add_req_clear_finish),
+                        android.widget.Toast.LENGTH_SHORT).show();
+            } catch (Throwable t) {
+            }
             CacheSize.refresh(a);
         }
     }
 
-    /** LoadingDialog's back-key callback; nothing to do. */
+    /** LoadingDialog's back-key callback. */
     static final class Noop implements Function0 {
         public Object invoke() {
             return Unit.INSTANCE;
@@ -151,20 +227,13 @@ public final class Pick {
     }
 
     /**
-     * The same, off the main thread — the entry point for {@code SettingActivity.ippClearCache}.
-     *
-     * Deleting a few hundred cover JPEGs is not instant, and there the system half is under way at
-     * the same time behind stock's own progress dialog: doing ours inline would freeze the frame
-     * that dialog is drawn in. When the system category was picked as well as an ipp one, the
-     * rest of our own cache directory (Glide's theme covers) is emptied here too, because
-     * {@link #packages} has just taken us out of the package manager's loop to protect the ipp
-     * caches the user kept.
+     * From {@code SettingActivity.ippClearCache}, off the main thread so stock's progress dialog
+     * keeps drawing. Also empties the rest of our cache dir when {@link #packages} took us out.
      */
     public static void clearAsync(int mask) {
         new Thread(new AsyncClear(mask)).start();
     }
 
-    /** Named (d8 here crashes on anonymous classes). */
     static final class AsyncClear implements Runnable {
         private final int mask;
 
@@ -177,50 +246,55 @@ public final class Pick {
                     ownCache(Y1Application.Companion.getAppContext());
                 }
             } catch (Throwable t) {
-                // a half-deleted cache is still a cache
             }
+            ownDone();                      // always: the dialog waits for it
         }
     }
 
-    /**
-     * Wipe the ipp caches of these categories — memory and the files under {@code getCacheDir()}.
-     * The {@link #SYSTEM} bit is not ours and is ignored here.
-     */
+    /** Held by a clear and by "Cache library": a pass started during a clear would fill what it then drops. */
+    public static final Object LOCK = new Object();
+
+    /** Memory and files. {@link #SYSTEM} is ignored here. */
     public static void clear(int mask) {
+        // first: "already cached" must not be answered while the clear is still running
+        Albums.cacheCleared((mask & COVERS) != 0 ? (mask | FLOW) & CACHE_ALL : mask & CACHE_ALL);
+        synchronized (LOCK) {
+            clearLocked(mask);
+        }
+    }
+
+    private static void clearLocked(int mask) {
+        if ((mask & STALE) != 0) Stale.clear();
+        step();
         if ((mask & COVERS) != 0) {
             CoverCache.clear();
+            step();
             BigCover.clear();
-        }
-        if ((mask & TAGS) != 0) {
-            // The cover-file stamps are bookkeeping about files, not pictures — they live with the
-            // other text caches, so clearing the covers alone does not report a category that is
-            // still a few KB (which is exactly what a cleared cache plus "Update library" showed).
+            // the stamps vouch for the pictures, so they go with them
             Art.clearStamps();
-            YearCache.clear();
-            TrackCache.clear();
+            // and with the stamps gone nothing would notice Cover Flow's copies going stale
+            mask |= FLOW;
+        } else {
+            step();
+        }
+        step();
+        if ((mask & FLOW) != 0) FlowCache.clear();
+        step();
+        if ((mask & TAGS) != 0) {
+            Schema.clearTags();
             AlbumInfo.clear();
-            AlbumArtist.clear();
-            DiscCache.clear();
             GenreInfo.clear();
         }
-        // "Cache library" answers "already cached" from a signature stored outside the caches, so
-        // the categories that were just wiped have to be struck off it explicitly.
-        Albums.cacheCleared(mask & CACHE_ALL);
+        step();
     }
 
     /**
-     * The packages stock's clear loop may empty, given what the user ticked — and the point where
-     * our own cache directory is dealt with.
-     *
-     * Called from {@code SettingActivity.ippClearCache} between {@code getInstalledPackages} and
-     * the loop, because {@code clearTotal} (which decides when the progress dialog closes) is the
-     * size of the list the loop runs over: filtering inside the loop instead would leave the dialog
-     * waiting for callbacks that never come. What is left of our own cache directory is emptied by
-     * {@link #clearAsync}, off this thread.
+     * The packages stock's clear loop may empty. Filtered BEFORE the loop, not inside it: the
+     * progress dialog closes after as many callbacks as the list has entries.
      */
     public static List packages(List all, int mask) {
         if (all == null) return new ArrayList();
-        if ((mask & CACHE_ALL) == CACHE_ALL) return all;   // nothing of ours to protect
+        if ((mask & CACHE_ALL) == CACHE_ALL) return all;
         ArrayList out = new ArrayList();
         Context c = Y1Application.Companion.getAppContext();
         String self = c == null ? null : c.getPackageName();
@@ -231,15 +305,11 @@ public final class Pick {
             if (self != null && self.equals(p.packageName)) continue;
             out.add(p);
         }
-        // An empty list would mean no observer callback and a progress dialog that never closes.
+        // An empty list means no callback and a dialog that never closes.
         return out.isEmpty() ? all : out;
     }
 
-    /**
-     * Empty our own cache directory of everything that is not an ipp cache — Glide's theme
-     * covers and whatever else the app keeps there. Used when the package manager is not allowed to
-     * do it for us because the user kept one of the ipp categories.
-     */
+    /** Everything in our cache dir that is not an ipp cache (Glide's theme covers and the like). */
     private static void ownCache(Context c) {
         try {
             File d = c == null ? null : c.getCacheDir();
@@ -250,7 +320,6 @@ public final class Pick {
                 delete(fs[i]);
             }
         } catch (Throwable t) {
-            // nothing to do
         }
     }
 
@@ -265,13 +334,7 @@ public final class Pick {
         f.delete();
     }
 
-    // ---------------------------------------------------------------- the weight column
-
-    /**
-     * What one category weighs on disk, for the dialog's size column. Measured on a background
-     * thread ({@link PickDialog}), never on the way to drawing a row — the same reason
-     * {@link CacheSize} exists.
-     */
+    /** One category's weight on disk. Background thread only, as {@link CacheSize}. */
     public static long size(int cat) {
         try {
             Context c = Y1Application.Companion.getAppContext();
@@ -280,36 +343,33 @@ public final class Pick {
             if (cat == COVERS) {
                 return CacheSize.dirSize(new File(d, "ipp_covers"))
                         + CacheSize.dirSize(new File(d, "ipp_big"))
-                        + CacheSize.dirSize(new File(d, "ipp_bigcover.txt"));
+                        + CacheSize.dirSize(new File(d, "ipp_bigcover.txt"))
+                        + CacheSize.dirSize(new File(d, "ipp_covers_none.txt"))
+                        + CacheSize.dirSize(new File(d, "ipp_art.txt"));
             }
-            if (cat == TAGS) {
-                return CacheSize.dirSize(new File(d, "ipp_art.txt"))
-                        + CacheSize.dirSize(new File(d, "ipp_years.txt"))
-                        + CacheSize.dirSize(new File(d, "ipp_tracks.txt"))
-                        + CacheSize.dirSize(new File(d, "ipp_albums.txt"))
-                        + CacheSize.dirSize(new File(d, "ipp_albumartist.txt"))
-                        + CacheSize.dirSize(new File(d, "ipp_discs.txt"))
-                        + CacheSize.dirSize(new File(d, "ipp_genres.txt"));
-            }
-            // Everything else the "Clear cache" row counts: the whole device's caches minus ours.
-            long n = CacheSize.total(c) - size(COVERS) - size(TAGS);
+            if (cat == FLOW) return CacheSize.dirSize(new File(d, "ipp_flow"));
+            if (cat == STALE) return Stale.size();
+            // the tags themselves are columns of the database, not files of the cache directory
+            if (cat == TAGS) return tagFiles(d) + Schema.tagBytes();
+            long n = CacheSize.total(c) - size(COVERS) - tagFiles(d) - size(FLOW);
             return n < 0L ? 0L : n;
         } catch (Throwable t) {
             return 0L;
         }
     }
 
-    /** Stock's format, so the dialog's numbers and the one under the row agree. */
+    private static long tagFiles(File d) {
+        return CacheSize.dirSize(new File(d, "ipp_genres.txt"));
+    }
+
     public static String sizeText(long n) {
         return CacheSize.format(n);
     }
 
-    // ---------------------------------------------------------------- "Cache library"
-
-    /** Open the picker for [Tools] → "Cache library". The callback is the caller's own. */
+    /** [Tools] → "Cache library". */
     public static void askCache(Activity a, PickDialog.Go go) {
         if (a == null) return;
-        int[] cats = new int[]{COVERS, TAGS};
+        int[] cats = new int[]{COVERS, FLOW, TAGS};
         new PickDialog(a, a.getString(R.string.ipp_cache),
                 a.getString(R.string.ipp_pick_cache), cats, false, go).show();
     }

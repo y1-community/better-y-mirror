@@ -3,6 +3,7 @@
 # [[group]] Caption        a group; where it stands here is where it stands in the menu
 # [row] Name               a row; where it stands here is where it stands in its group
 # [row if parent] Name     a SUB-ITEM: shown only while `parent` is on, and drawn with an arrow
+# [row in section] Name    a row of a SECTION: `section` is a row that opens rows of its own
 # * Value                  one value of a choice row, in order
 # ---                      a forced page break in the description; otherwise pages are measured
 # @img file Caption        a description page that is nothing but this picture (help/img/file)
@@ -15,9 +16,6 @@
 # never allowed to be incomplete.
 
 [[tools]] Tools
-
-[reboot] Reboot
-Restarts the device.
 
 [cache] Cache library
 Caches the library.
@@ -32,32 +30,80 @@ Saves the settings, likes, playlists, bookmarks and reading progress to the /bet
 
 The five newest archives are kept. After Load the player restarts.
 
+[m3u_import] Import M3U playlists
+Imports the .m3u and .m3u8 files in the /Playlists/ folder at the root of the SD card. A song is found by its path, or by its file name when the path leads nowhere.
+
+If a playlist of that name already exists, you can replace it, add the missing songs or create a new one. A file exported from {app:favorites} goes back into {app:favorites}.
+
+At the end the screen lists every song that was not found in the library.
+
+To export, hold the top button on a playlist and pick "Export to m3u".
+
+To ensure that the exported playlist opens from anywhere on your PC, you must specify the path to the music library on your computer (for example, C:\Music). During import, the player will suggest a path. You can edit it directly in the player or later in the /better-Y/music_path.txt file. The folder structure must be identical on both the player and the PC. 
+
 [log] Save diagnostic log
 Saves a diagnostic report to the /better-Y/logs/ folder on the SD card for a bug report.
 
-[[player]] Now playing
+[menu_tip]
+* Close
+* Don't show again
+You can tap and hold the top button on each menu item to learn more about how they work.
+
+[themes_tip]
+* Close
+* Don't show again
+You can save your current settings to the better-Y.json file, which will appear in the selected theme's folder.
+
+To do this, press and hold the top button on the desired theme and select "Save config".
+---
+The following settings are saved:
+
+Now Playing: style (except for "tilt the cover").
+Menu: style, status bar style and text color.
+Screensaver: style (except for "brightness").
+Key tone: sound.
+---
+To add a screensaver background (screensaver.*), a USB screen background (usb.*), or a better-Y icon (better-Y.*), place images with the corresponding filenames in the theme folder.
+
+Supported formats are *.png, *.jpg, and *.jpeg.
+---
+You can also use your own scroll wheel sound file. 
+To do this, place a "key-tone.*" file in the theme folder. Next, go to Settings - Key tone, select Sound - Theme, and save the theme config.
+
+Supported formats are *.mp3, *.ogg, and *.wav.
+
+[[player]] Now Playing
+
+[np_style] Style
 
 [icon_tint] Icon color
 * Light
 * Dark
 * Theme color
-Sets the colour of the interactive buttons in the player.
 
 [text_tint] Text color
 * Light
 * Dark
 * Theme color
-Sets the colour of the text lines and the time marks in the player.
 
 [lyrics_tint] Lyrics color
 * Light
 * Dark
 * Theme color
-Sets the colour of the lyrics in the player.
+
+[box_tint] Text boxes color
+* Light
+* Dark
+* Theme color
+* Off
 
 [cover_tilt] Tilt the cover
-@img cover_tilt_on.png {On}
-@img cover_tilt_off.png {Off}
+
+[np_blank]
+* Title
+* Artist
+* Album
+* Lyrics
 
 [top_hold] Top button hold (Music)
 * Lyrics
@@ -84,6 +130,8 @@ becomes
 Works only in the artist line of the player.
 
 Hidden artists can be moved to the title by enabling "{row:feat_in_title}".
+
+Turning it on turns "{row:player_album_artist}" off.
 @img first_artist_only_off.png {Off}
 @img first_artist_only_on.png {On}
 
@@ -101,6 +149,40 @@ Works only in the artist line of the player.
 @img first_artist_only_on.png {On} + {Off}
 @img feat_in_title_on.png {On} + {On}
 
+[player_album_artist] Show Album Artists instead of Artists
+Shows the Album Artist in the artist line of the player instead of the song's individual artists. An album without an Album Artist shows the first artist of the song. For example, on an album by "Tree":
+
+"Tree, Shelf Nunny, Lena Kuhn — People"
+becomes
+"Tree — People"
+
+Works only in the artist line of the player.
+
+Turning it on turns "{row:first_artist_only}" off.
+@img first_artist_only_off.png {Off}
+@img first_artist_only_on.png {On}
+
+[various_artist if player_album_artist] Replace "Various Artists" with an artist
+When the Album Artist is "Various" or "Various Artists", shows the first artist of the song instead. For example, on a compilation:
+
+"Various Artists — Lose Yourself"
+becomes
+"Eminem — Lose Yourself"
+
+[aa_feat_in_title if player_album_artist] Move featured artists to the title
+Moves the song's artists that the artist line does not show into the song title, after a "feat.". For example, on an album by "Tree":
+
+"Tree, Shelf Nunny, Lena Kuhn — People"
+with this setting Off becomes
+"Tree — People"
+
+with this setting On becomes
+"Tree — People (feat. Shelf Nunny, Lena Kuhn)"
+
+Nothing is added when the title already names one of them, or when the artist line shows "Various" or "Various Artists".
+@img first_artist_only_on.png {Off}
+@img feat_in_title_on.png {On}
+
 [artist_album_scroll] Long artist/album scroll
 * Off
 * Artists
@@ -111,6 +193,85 @@ Enables long text scroll in the selected lines.
 Long song titles always scroll, regardless of the setting.
 
 [[menu]] Menu
+
+[menu_look] Style
+
+[status_bar] Status bar
+
+[bar_text in status_bar] Status bar text color
+* Light
+* Dark
+* Theme color
+Sets the color of the menu header and the battery percentage.
+
+[bar_style in status_bar] Style
+* Default
+* Centered
+Centered moves the icons to the left edge and the section title to the middle while the battery stays on the right.
+
+[bar_icons in status_bar] Icons visibility
+* Menu header
+* Playback
+* Headphones
+* Bluetooth
+* Battery
+* Battery percentage
+Chooses which icons the status bar shows.
+
+[main_menu] Main menu
+
+[mm_now in main_menu] Now Playing
+
+[mm_music in main_menu] Music
+
+[mm_coverflow in main_menu if mm_music] Cover Flow
+
+[mm_songs in main_menu if mm_music] All songs
+
+[mm_playlists in main_menu if mm_music] Playlists
+
+[mm_artists in main_menu if mm_music] Artists
+
+[album_artists in main_menu if mm_music] Album Artists
+An album without an “Album Artist” tag uses the first artist from the “Artist” tag that appears most frequently on the album.
+
+[mm_albums in main_menu if mm_music] Albums
+
+[mm_genres in main_menu if mm_music] Genres
+
+[mm_folders in main_menu if mm_music] Folders
+
+[mm_search in main_menu if mm_music] Search
+
+[mm_videos in main_menu] Videos
+
+[mm_video_all in main_menu if mm_videos] All videos
+
+[mm_video_playlist in main_menu if mm_videos] Playlists
+
+[mm_video_folders in main_menu if mm_videos] Folders
+
+[mm_video_search in main_menu if mm_videos] Search
+
+[mm_audiobooks in main_menu] Audiobooks
+
+[mm_book_all in main_menu if mm_audiobooks] All audiobooks
+
+[mm_book_artists in main_menu if mm_audiobooks] Artists
+
+[mm_book_albums in main_menu if mm_audiobooks] Albums
+
+[mm_book_folders in main_menu if mm_audiobooks] Folders
+
+[mm_bookmarks in main_menu if mm_audiobooks] Bookmarks
+
+[mm_ebook in main_menu] E-books
+
+[mm_photos in main_menu] Photos
+
+[mm_fm in main_menu] FM Radio
+
+[mm_bluetooth in main_menu] Bluetooth
 
 [alpha_scroll] Alphabetical fast scroll
 Starts after a number of wheel clicks and jumps through a list by first letter.
@@ -134,12 +295,29 @@ When you open the list containing the currently playing song, the selection imme
 [follow_idle if follow_playing] Return delay (seconds)
 Determines how many seconds after the last scroll of the wheel the selection returns to the song currently playing.
 
-[fixed_menu_pad] Fixed menu margins
-Fixes margins of the main menu and settings.
+[loop_scroll] List wraparound
+When reaching the end or the beginning of a list, the selection loops back to the opposite side. Works in every list, menu, gallery and dialog window.
 
-Worth turning off with themes whose backgrounds are drawn for stock margins — bundled Melody Munchkin, for example.
-@img fixed_menu_pad_off.png {Off}
-@img fixed_menu_pad_on.png {On}
+[animations] Enable animations
+
+[anim_nav if animations] Navigation
+Menu screens slide into one another, as on the iPod: going deeper — from right to left, going back — from left to right. A list beside a picture slides within its half of the screen; a full-screen list comes in from the right and pushes the half out.
+
+[anim_scroll if animations] Scroll
+
+[menu_style] Style
+* Default
+* Even
+* Simple
+
+[fixed_menu_pad] Margins
+* Default
+* No margins
+
+[preview_text] Text color in previews
+* Light
+* Dark
+* Theme color
 
 [[metadata]] Metadata
 
@@ -150,8 +328,11 @@ Shows song titles from the metadata instead of the file name.
 Shows audiobook titles from the metadata instead of the file name.
 
 [album_year] Release year in album names
-Shows the album's release year in its name. For example:
+Shows the album's release year in its name:
 "The Eminem Show (2002)"
+
+If an album contains songs released in different years, the earliest and latest years will be listed, separated by a dash:
+"Dirt (1992 - 1993)"
 
 [track_numbers] Track numbers from metadata inside albums
 Shows track numbers from the metadata inside albums. 
@@ -201,6 +382,70 @@ When an album is opened through the "{app:artists}" section, only the songs the 
 
 [[system]] System
 
+[screensaver] Screensaver
+
+[ss_on in screensaver] Enable screensaver
+When the Sleep time set in Settings runs out, a screensaver appears instead of the screen locking.
+
+[ss_style in screensaver if ss_on] Style
+* Clock, left
+* Clock, center
+* Clock, right
+* Clock and date, left
+* Clock and date, center
+* Clock and date, right
+* Playing song, left
+* Playing song, center
+* Playing song, right
+
+[ss_bright in screensaver if ss_on] Brightness
+
+[ss_off in screensaver if ss_on] Turn off the screen after
+* 15 sec
+* 30 sec
+* 45 sec
+* 1 min
+* 2 min
+* 3 min
+* 4 min
+* 5 min
+* 10 min
+* 15 min
+* Never
+How long the screensaver stays before the screen goes off.
+
+[ss_charging in screensaver if ss_on] Do not turn off the screen while charging
+
+[ss_background in screensaver if ss_on] Background
+* Light
+* Dark
+* Wallpaper
+
+[ss_tint in screensaver if ss_on] Background tint
+* Off
+* Light
+* Dark
+* Theme color
+
+[ss_clock_color in screensaver if ss_on] Clock color
+* Light
+* Dark
+* Theme color
+
+[ss_text_color in screensaver if ss_on] Text color
+* Light
+* Dark
+* Theme color
+
+[ss_tip in screensaver]
+* Close
+* Don't show again
+To switch between categories, use the left and right buttons.
+
+To select a value, use the scroll wheel.
+
+To save your changes, exit the menu by pressing the top button.
+
 [delete_folder] After deleting a song also delete the folder it was stored in
 When songs or albums are deleted, the folders that held them are deleted as well, if they are left empty.
 ---
@@ -218,9 +463,34 @@ You can add songs to it just like you would to a regular playlist, and likes are
 
 When you turn off this setting, the playlist and the likes you've given aren't deleted - they're simply hidden.
 
+[center_hold] Hold center button to shut down
+Holding the center button for 5 seconds shuts the device down without asking for confirmation.
+---
+A notice appears 2 seconds before the shutdown. Releasing the button while the notice is visible cancels the shutdown.
+
+To lock the screen, press and release the center button before the notice appears.
+
 [kb_lang2] Second keyboard language
 * Off
 * Russian
 Adds a second layout to the on-screen keyboard.
 
 Hold top button to switch.
+
+[[coverflow]] Cover Flow
+
+[flow_count] Albums on screen
+* 3
+* 5
+* 7
+
+[flow_group] Group by artist
+
+[flow_year] Show release year
+* Off
+* Next to the artist
+* Next to the album
+
+[flow_start] Show on startup
+* Last position
+* Currently playing album

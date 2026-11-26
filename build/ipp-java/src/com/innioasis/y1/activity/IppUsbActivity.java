@@ -28,6 +28,8 @@ import android.widget.TextView;
 
 import com.innioasis.ipp.Force;
 import com.innioasis.ipp.Icons;
+import com.innioasis.ipp.Saver;
+import com.innioasis.ipp.Tone;
 import com.innioasis.y1.R;
 import com.innioasis.y1.theme.ThemeManager;
 import com.innioasis.y1.utils.WallpaperUtils;
@@ -35,14 +37,9 @@ import com.innioasis.y1.utils.WallpaperUtils;
 import java.lang.reflect.Method;
 
 /**
- * "USB connected", in place of the system's screen of the same name ({@link com.innioasis.ipp.Usb}
- * refuses that one's start and opens this). Same layout, same commands — the storage switch and
- * the two broadcasts stock's receiver listens for — painted from the theme: its font, the global
- * wallpaper under the context menu's colour at half opacity (30% for the stock colour), the menu's unselected text colour
- * for text and icon, and the button inverted from those two.
- *
- * Centre switches the storage; top leaves, but only while the storage is off — the card belongs to
- * the computer until then. Unplugging the cable closes the screen in either state.
+ * "USB connected" in place of the system's screen ({@link com.innioasis.ipp.Usb}): its layout and
+ * commands, painted from the theme's menu colours over the wallpaper. Centre switches the storage;
+ * top leaves only while it is off — the card is the computer's until then. Unplugging closes it.
  */
 public final class IppUsbActivity extends Activity {
 
@@ -108,7 +105,6 @@ public final class IppUsbActivity extends Activity {
         try {
             if (r != null) unregisterReceiver(r);
         } catch (Throwable t) {
-            // not registered
         }
     }
 
@@ -120,12 +116,14 @@ public final class IppUsbActivity extends Activity {
         FrameLayout root = new FrameLayout(this);
         ImageView wall = new ImageView(this);
         wall.setScaleType(ImageView.ScaleType.CENTER_CROP);
-        Bitmap g = WallpaperUtils.INSTANCE.getGlobalBitmap();
+        // the theme's own usb.* is drawn for this screen and goes on as it is; the wallpaper is veiled
+        Bitmap own = Saver.themeUsb(this);
+        Bitmap g = own != null ? own : WallpaperUtils.INSTANCE.getGlobalBitmap();
         if (g != null) wall.setImageBitmap(g);
         root.addView(wall, new FrameLayout.LayoutParams(-1, -1));
         View veil = new View(this);
-        // The stock menu colour is light enough that half of it washes the wallpaper out; it is
-        // compared by value, so a theme that writes the same colour gets the same veil.
+        if (own != null) veil.setVisibility(View.GONE);
+        // half the stock menu colour washes the wallpaper out: 30% for it
         int alpha = (bg & 0x00FFFFFF) == (MENU_BG & 0x00FFFFFF) ? 0x4D000000 : 0x80000000;
         veil.setBackgroundColor((bg & 0x00FFFFFF) | alpha);
         root.addView(veil, new FrameLayout.LayoutParams(-1, -1));
@@ -133,8 +131,7 @@ public final class IppUsbActivity extends Activity {
         RelativeLayout box = new RelativeLayout(this);
         root.addView(box, new FrameLayout.LayoutParams(-1, -1));
 
-        // No caption at the top, but its line keeps its height: the icon and the texts below are
-        // placed from it.
+        // no caption, but its line keeps its height: the rest is placed from it
         TextView title = text(20, text);
         title.setId(1);
         title.setVisibility(View.INVISIBLE);
@@ -210,6 +207,7 @@ public final class IppUsbActivity extends Activity {
 
     @Override
     public boolean dispatchKeyEvent(KeyEvent e) {
+        Tone.key(e);
         if (Force.key(e)) return true;
         if (e.getAction() == KeyEvent.ACTION_DOWN) {
             cleanDown = e.getRepeatCount() == 0;       // a hold is not a press
@@ -237,10 +235,7 @@ public final class IppUsbActivity extends Activity {
         t.start();
     }
 
-    /**
-     * The state is read, never assumed: the switch call returns before the card is actually
-     * handed over, so the screen follows the storage broadcasts and waits for the state it asked for.
-     */
+    /** The state is read, never assumed: the switch returns before the card is handed over. */
     void settle() {
         shared = storage("isUsbMassStorageEnabled");
         if (busy && shared == target) {
@@ -273,7 +268,6 @@ public final class IppUsbActivity extends Activity {
             Integer c = ThemeManager.INSTANCE.menuBGColor();
             if (c != null) return c.intValue();
         } catch (Throwable t) {
-            // no theme
         }
         return MENU_BG;
     }
@@ -293,10 +287,7 @@ public final class IppUsbActivity extends Activity {
         return Math.round(v * getResources().getDisplayMetrics().density);
     }
 
-    /**
-     * The switch, off the main thread. The broadcast goes first, as stock's screen sends it — our
-     * own receiver stops the player before the card is taken away.
-     */
+    /** The switch, off the main thread; the broadcast first, so the player stops before. */
     static final class Switch implements Runnable {
         private final IppUsbActivity a;
         private final boolean on;

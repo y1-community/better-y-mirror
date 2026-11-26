@@ -15,7 +15,7 @@
 
 .method constructor <init>(Lcom/innioasis/y1/database/Y1Repository$SongSortType;)V
   .registers 2
-  .line 1160
+  .line 1936
     invoke-direct { p0 }, Ljava/lang/Object;-><init>()V
     iput-object p1, p0, Lcom/innioasis/ipp/Albums$SongCmp;->type:Lcom/innioasis/y1/database/Y1Repository$SongSortType;
     return-void
@@ -23,11 +23,11 @@
 
 .method public compare(Ljava/lang/Object;Ljava/lang/Object;)I
   .registers 5
-  .line 1162
+  .line 1938
     check-cast p1, Lcom/innioasis/y1/database/Song;
-  .line 1163
+  .line 1939
     check-cast p2, Lcom/innioasis/y1/database/Song;
-  .line 1164
+  .line 1940
     iget-object v0, p0, Lcom/innioasis/ipp/Albums$SongCmp;->type:Lcom/innioasis/y1/database/Y1Repository$SongSortType;
     sget-object v1, Lcom/innioasis/y1/database/Y1Repository$SongSortType;->Time_Asc:Lcom/innioasis/y1/database/Y1Repository$SongSortType;
     if-ne v0, v1, :L0
@@ -35,11 +35,11 @@
     move-result-wide v0
     invoke-virtual { p2 }, Lcom/innioasis/y1/database/Song;->getFileDate()J
     move-result-wide p1
-    invoke-static { v0, v1, p1, p2 }, Lcom/innioasis/ipp/Albums;->access$300(JJ)I
+    invoke-static { v0, v1, p1, p2 }, Lcom/innioasis/ipp/Albums;->access$1300(JJ)I
     move-result p1
     return p1
   :L0
-  .line 1165
+  .line 1941
     iget-object v0, p0, Lcom/innioasis/ipp/Albums$SongCmp;->type:Lcom/innioasis/y1/database/Y1Repository$SongSortType;
     sget-object v1, Lcom/innioasis/y1/database/Y1Repository$SongSortType;->Time_Desc:Lcom/innioasis/y1/database/Y1Repository$SongSortType;
     if-ne v0, v1, :L1
@@ -47,12 +47,12 @@
     move-result-wide v0
     invoke-virtual { p2 }, Lcom/innioasis/y1/database/Song;->getFileDate()J
     move-result-wide p1
-    invoke-static { v0, v1, p1, p2 }, Lcom/innioasis/ipp/Albums;->access$300(JJ)I
+    invoke-static { v0, v1, p1, p2 }, Lcom/innioasis/ipp/Albums;->access$1300(JJ)I
     move-result p1
     neg-int p1, p1
     return p1
   :L1
-  .line 1166
+  .line 1942
     iget-object v0, p0, Lcom/innioasis/ipp/Albums$SongCmp;->type:Lcom/innioasis/y1/database/Y1Repository$SongSortType;
     sget-object v1, Lcom/innioasis/y1/database/Y1Repository$SongSortType;->SongName_A_To_Z:Lcom/innioasis/y1/database/Y1Repository$SongSortType;
     if-ne v0, v1, :L2
@@ -60,11 +60,11 @@
     move-result-object p1
     invoke-virtual { p2 }, Lcom/innioasis/y1/database/Song;->getPinyinSongName()Ljava/lang/String;
     move-result-object p2
-    invoke-static { p1, p2 }, Lcom/innioasis/ipp/Albums;->access$400(Ljava/lang/String;Ljava/lang/String;)I
+    invoke-static { p1, p2 }, Lcom/innioasis/ipp/Albums;->access$1400(Ljava/lang/String;Ljava/lang/String;)I
     move-result p1
     return p1
   :L2
-  .line 1167
+  .line 1943
     iget-object v0, p0, Lcom/innioasis/ipp/Albums$SongCmp;->type:Lcom/innioasis/y1/database/Y1Repository$SongSortType;
     sget-object v1, Lcom/innioasis/y1/database/Y1Repository$SongSortType;->SongName_Z_To_A:Lcom/innioasis/y1/database/Y1Repository$SongSortType;
     if-ne v0, v1, :L3
@@ -72,12 +72,12 @@
     move-result-object p1
     invoke-virtual { p2 }, Lcom/innioasis/y1/database/Song;->getPinyinSongName()Ljava/lang/String;
     move-result-object p2
-    invoke-static { p1, p2 }, Lcom/innioasis/ipp/Albums;->access$400(Ljava/lang/String;Ljava/lang/String;)I
+    invoke-static { p1, p2 }, Lcom/innioasis/ipp/Albums;->access$1400(Ljava/lang/String;Ljava/lang/String;)I
     move-result p1
     neg-int p1, p1
     return p1
   :L3
-  .line 1168
+  .line 1944
     iget-object v0, p0, Lcom/innioasis/ipp/Albums$SongCmp;->type:Lcom/innioasis/y1/database/Y1Repository$SongSortType;
     sget-object v1, Lcom/innioasis/y1/database/Y1Repository$SongSortType;->Album:Lcom/innioasis/y1/database/Y1Repository$SongSortType;
     if-ne v0, v1, :L4
@@ -85,11 +85,11 @@
     move-result-object p1
     invoke-virtual { p2 }, Lcom/innioasis/y1/database/Song;->getPinyinAlbum()Ljava/lang/String;
     move-result-object p2
-    invoke-static { p1, p2 }, Lcom/innioasis/ipp/Albums;->access$400(Ljava/lang/String;Ljava/lang/String;)I
+    invoke-static { p1, p2 }, Lcom/innioasis/ipp/Albums;->access$1400(Ljava/lang/String;Ljava/lang/String;)I
     move-result p1
     return p1
   :L4
-  .line 1169
+  .line 1945
     iget-object v0, p0, Lcom/innioasis/ipp/Albums$SongCmp;->type:Lcom/innioasis/y1/database/Y1Repository$SongSortType;
     sget-object v1, Lcom/innioasis/y1/database/Y1Repository$SongSortType;->FileName_Z_To_A:Lcom/innioasis/y1/database/Y1Repository$SongSortType;
     if-ne v0, v1, :L5
@@ -97,17 +97,17 @@
     move-result-object p1
     invoke-virtual { p2 }, Lcom/innioasis/y1/database/Song;->getPinyinName()Ljava/lang/String;
     move-result-object p2
-    invoke-static { p1, p2 }, Lcom/innioasis/ipp/Albums;->access$400(Ljava/lang/String;Ljava/lang/String;)I
+    invoke-static { p1, p2 }, Lcom/innioasis/ipp/Albums;->access$1400(Ljava/lang/String;Ljava/lang/String;)I
     move-result p1
     neg-int p1, p1
     return p1
   :L5
-  .line 1170
+  .line 1946
     invoke-virtual { p1 }, Lcom/innioasis/y1/database/Song;->getPinyinName()Ljava/lang/String;
     move-result-object p1
     invoke-virtual { p2 }, Lcom/innioasis/y1/database/Song;->getPinyinName()Ljava/lang/String;
     move-result-object p2
-    invoke-static { p1, p2 }, Lcom/innioasis/ipp/Albums;->access$400(Ljava/lang/String;Ljava/lang/String;)I
+    invoke-static { p1, p2 }, Lcom/innioasis/ipp/Albums;->access$1400(Ljava/lang/String;Ljava/lang/String;)I
     move-result p1
     return p1
 .end method
